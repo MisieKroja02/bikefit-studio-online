@@ -1,0 +1,15 @@
+Aktualizacja BikeFit Studio Online v2.0
+
+1. Otwórz w repozytorium GitHub plik app.py.
+2. Kliknij ikonę ołówka / Edit this file.
+3. Podmień całą zawartość na app.py z wersji v2.0.
+4. Kliknij Commit changes.
+5. Dodatkowo podmień plik bikefit/optimizer.py, ponieważ rozszerzono bezpieczny zakres wysokości siodła.
+6. W Streamlit wybierz Manage app -> Reboot app.
+7. Odśwież stronę skrótem Ctrl+F5.
+
+Naprawa:
+- stare lub błędne wartości są automatycznie korygowane przed utworzeniem suwaków,
+- wysokość siodła obsługuje teraz zakres 500-900 mm,
+- wynik doboru i optymalizacji jest ograniczany do bezpiecznych zakresów,
+- błąd StreamlitValueBelowMinError nie powinien już wystąpić.

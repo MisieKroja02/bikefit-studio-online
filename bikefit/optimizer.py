@@ -10,7 +10,7 @@ ProgressCallback = Callable[[str], None]
 
 
 BOUNDS: Dict[str, Tuple[float, float]] = {
-    "saddle_height": (620.0, 850.0),
+    "saddle_height": (500.0, 900.0),
     "saddle_fore_aft": (-60.0, 80.0),
     "handlebar_stack_delta": (-60.0, 100.0),
     "handlebar_reach_delta": (-80.0, 80.0),

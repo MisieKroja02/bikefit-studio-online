@@ -32,7 +32,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v1.9 — MisieK",
+    page_title="BikeFit Studio Online v2.0 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -279,6 +279,73 @@ def external_link_button(label: str, url: str) -> None:
     )
 
 
+FIT_VALUE_LIMITS: dict[str, tuple[float, float]] = {
+    "height": (1400.0, 2200.0),
+    "inseam": (600.0, 1100.0),
+    "weight": (35.0, 220.0),
+    "saddle_height": (500.0, 900.0),
+    "saddle_fore_aft": (-60.0, 80.0),
+    "handlebar_stack_delta": (-60.0, 100.0),
+    "handlebar_reach_delta": (-80.0, 80.0),
+    "cadence": (40.0, 130.0),
+    "foot_angle": (-20.0, 15.0),
+    "gear_weight": (0.0, 40.0),
+    "front_load_percent": (35.0, 50.0),
+    "phase": (0.0, 359.0),
+    "simulation_scale": (65.0, 100.0),
+    "animation_speed": (0.25, 2.0),
+}
+
+
+def clamp_number(value: object, low: float, high: float, fallback: float) -> float:
+    try:
+        number = float(value)
+        if not math.isfinite(number):
+            return fallback
+    except (TypeError, ValueError):
+        return fallback
+    return max(low, min(high, number))
+
+
+def sanitize_numeric_state() -> None:
+    """Naprawia stare, błędne lub zaimportowane wartości przed utworzeniem widżetów."""
+    defaults = {
+        "height": 1780.0,
+        "inseam": 830.0,
+        "weight": 101.0,
+        "saddle_height": 738.0,
+        "saddle_fore_aft": 0.0,
+        "handlebar_stack_delta": 0.0,
+        "handlebar_reach_delta": 0.0,
+        "cadence": 85.0,
+        "foot_angle": -8.0,
+        "gear_weight": 1.5,
+        "front_load_percent": 44.0,
+        "phase": 270.0,
+        "simulation_scale": 82.0,
+        "animation_speed": 1.0,
+    }
+    for key, (low, high) in FIT_VALUE_LIMITS.items():
+        st.session_state[key] = clamp_number(
+            st.session_state.get(key, defaults[key]), low, high, defaults[key]
+        )
+
+
+def sanitize_fit_settings(settings: FitSettings) -> FitSettings:
+    """Ogranicza wynik algorytmu do zakresów obsługiwanych przez interfejs."""
+    return replace(
+        settings,
+        saddle_height=clamp_number(settings.saddle_height, 500.0, 900.0, 738.0),
+        saddle_fore_aft=clamp_number(settings.saddle_fore_aft, -60.0, 80.0, 0.0),
+        handlebar_stack_delta=clamp_number(settings.handlebar_stack_delta, -60.0, 100.0, 0.0),
+        handlebar_reach_delta=clamp_number(settings.handlebar_reach_delta, -80.0, 80.0, 0.0),
+        cadence=clamp_number(settings.cadence, 40.0, 130.0, 85.0),
+        foot_angle=clamp_number(settings.foot_angle, -20.0, 15.0, -8.0),
+        gear_weight=clamp_number(settings.gear_weight, 0.0, 40.0, 1.5),
+        front_load_percent=clamp_number(settings.front_load_percent, 35.0, 50.0, 44.0),
+    )
+
+
 def init_state() -> None:
     defaults = {
         "profile_name": "Robert",
@@ -348,6 +415,7 @@ def profile_login_gate() -> None:
 
 
 def current_settings() -> FitSettings:
+    sanitize_numeric_state()
     return FitSettings(
         saddle_height=float(st.session_state.saddle_height),
         saddle_fore_aft=float(st.session_state.saddle_fore_aft),
@@ -417,7 +485,8 @@ SETTINGS_KEYS = (
 
 
 def apply_fit_result(settings: FitSettings, notes: list[str], status: str) -> None:
-    """Stosuje wynik przed utworzeniem suwaków w bieżącym przebiegu Streamlit."""
+    """Stosuje bezpieczny wynik przed utworzeniem suwaków w bieżącym przebiegu."""
+    settings = sanitize_fit_settings(settings)
     for key in SETTINGS_KEYS:
         # Lista stylu jest już utworzona wyżej w panelu; wartość pozostaje zgodna
         # z wybranym profilem, więc nie modyfikujemy aktywnego widżetu.
@@ -751,7 +820,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v1.9</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v2.0</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -763,6 +832,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
 
 init_state()
 apply_pending_profile_payload()
+sanitize_numeric_state()
 profile_login_gate()
 
 # Sidebar branding.
@@ -911,7 +981,8 @@ with st.sidebar:
             st.success(st.session_state.fit_action_status)
 
     st.markdown("#### Regulacja")
-    st.slider("M1 wysokość siodła [mm]", 620.0, 850.0, key="saddle_height", step=1.0)
+    sanitize_numeric_state()
+    st.slider("M1 wysokość siodła [mm]", 500.0, 900.0, key="saddle_height", step=1.0)
     st.slider("Regulacja siodła na szynach [mm]", -60.0, 80.0, key="saddle_fore_aft", step=1.0)
     st.slider("Zmiana wysokości kierownicy [mm]", -60.0, 100.0, key="handlebar_stack_delta", step=1.0)
     st.slider("Zmiana zasięgu kierownicy [mm]", -80.0, 80.0, key="handlebar_reach_delta", step=1.0)
@@ -935,7 +1006,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v1.9</h1>
+  <h1>BikeFit Studio Online v2.0</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
