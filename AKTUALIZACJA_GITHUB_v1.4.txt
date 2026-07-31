@@ -1,0 +1,19 @@
+BIKEFIT STUDIO ONLINE v1.4 — AKTUALIZACJA
+
+Zmiana:
+- symulacja roweru i rowerzysty jest domyślnie mniejsza,
+- pole rysunku jest niższe, dzięki czemu lepiej mieści się na ekranie,
+- obiekt jest automatycznie centrowany,
+- w panelu Regulacja dodano suwak „Skala symulacji [%]” od 65 do 100%,
+- domyślna skala wynosi 82%.
+
+NAJSZYBSZA AKTUALIZACJA
+1. Otwórz repozytorium bikefit-studio-online na GitHubie.
+2. Otwórz app.py.
+3. Kliknij ikonę ołówka albo Add file -> Upload files.
+4. Podmień app.py na plik z tej paczki.
+5. Kliknij Commit changes.
+6. Poczekaj na automatyczne wdrożenie Streamlit.
+7. W razie potrzeby wybierz Manage app -> Reboot app.
+
+Pozostałych plików nie trzeba zmieniać.

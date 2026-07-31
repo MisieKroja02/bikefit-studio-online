@@ -31,7 +31,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v1.3 — MisieK",
+    page_title="BikeFit Studio Online v1.4 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -300,6 +300,7 @@ def init_state() -> None:
         "front_load_percent": 44.0,
         "phase": 270.0,
         "show_measurements": True,
+        "simulation_scale": 82.0,
         "fit_notes": [],
         "custom_bikes": [],
         "sidebar_import_url": "",
@@ -417,6 +418,7 @@ def render_bike_svg(
     settings: FitSettings,
     phase: float,
     show_measurements: bool,
+    display_scale_percent: float = 82.0,
 ) -> str:
     pose = calculate_pose(bike, rider, settings, phase)
     bp = bike_points(bike, settings)
@@ -435,11 +437,17 @@ def render_bike_svg(
         ys.append(pose.shoulder[1] + 180)
     min_x, max_x = min(xs) - 140, max(xs) + 140
     min_y, max_y = min(ys) - 70, max(ys) + 120
-    W, H = 1120, 690
-    scale = min((W - 60) / (max_x - min_x), (H - 60) / (max_y - min_y))
+    W, H = 1120, 610
+    fit_scale = min((W - 90) / (max_x - min_x), (H - 80) / (max_y - min_y))
+    user_scale = max(0.60, min(1.00, float(display_scale_percent) / 100.0))
+    scale = fit_scale * user_scale
+    content_w = (max_x - min_x) * scale
+    content_h = (max_y - min_y) * scale
+    offset_x = (W - content_w) / 2.0
+    offset_y = (H - content_h) / 2.0
 
     def T(p: tuple[float, float]) -> tuple[float, float]:
-        return 30 + (p[0] - min_x) * scale, H - 30 - (p[1] - min_y) * scale
+        return offset_x + (p[0] - min_x) * scale, H - offset_y - (p[1] - min_y) * scale
 
     def line(a, b, color, width=5, dash=""):
         x1, y1 = T(a); x2, y2 = T(b)
@@ -456,8 +464,8 @@ def render_bike_svg(
     parts = [
         f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Symulacja pozycji na rowerze">',
         '<defs><filter id="shadow"><feDropShadow dx="0" dy="4" stdDeviation="5" flood-opacity="0.32"/></filter></defs>',
-        '<rect width="1120" height="690" rx="22" fill="#07131e"/>',
-        f'<ellipse cx="560" cy="340" rx="500" ry="300" fill="{colors["halo"]}" opacity="0.78"/>',
+        f'<rect width="{W}" height="{H}" rx="22" fill="#07131e"/>',
+        f'<ellipse cx="{W/2:.0f}" cy="{H/2:.0f}" rx="{W*0.43:.0f}" ry="{H*0.43:.0f}" fill="{colors["halo"]}" opacity="0.78"/>',
     ]
     for gx in range(-900, 1701, 100):
         x1, y1 = T((gx, min_y)); x2, y2 = T((gx, max_y))
@@ -568,7 +576,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v1.3</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v1.4</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -692,6 +700,7 @@ with st.sidebar:
     st.slider("Kadencja [rpm]", 40.0, 130.0, key="cadence", step=1.0)
     st.slider("Kąt stopy [°]", -20.0, 15.0, key="foot_angle", step=1.0)
     st.slider("Pozycja korby [°]", 0.0, 359.0, key="phase", step=1.0)
+    st.slider("Skala symulacji [%]", 65.0, 100.0, key="simulation_scale", step=1.0, help="Zmniejsz, aby cały rower i rowerzysta mieścili się wygodniej na ekranie.")
     st.checkbox("Pokaż wymiary M1–M5", key="show_measurements")
 
 settings = current_settings()
@@ -721,7 +730,7 @@ main_tab, config_tab, tire_tab, geometry_tab, import_tab, report_tab = st.tabs([
 ])
 
 with main_tab:
-    st.markdown(render_bike_svg(bike, rider, settings, float(st.session_state.phase), bool(st.session_state.show_measurements)), unsafe_allow_html=True)
+    st.markdown(render_bike_svg(bike, rider, settings, float(st.session_state.phase), bool(st.session_state.show_measurements), float(st.session_state.simulation_scale)), unsafe_allow_html=True)
     cards = "".join(
         f'<div class="measure-card"><div class="measure-code" style="color:{color}">{code}</div><div class="measure-name">{name}</div><div class="measure-value">{value}</div></div>'
         for code, name, value, color in measurement_values(bike, settings)
