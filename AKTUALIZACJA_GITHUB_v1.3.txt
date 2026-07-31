@@ -1,0 +1,21 @@
+BIKEFIT STUDIO ONLINE v1.3 — AKTUALIZACJA
+
+Naprawa: białe napisy na białych przyciskach w sekcji importu geometrii.
+
+Najprostsza aktualizacja:
+1. Otwórz repozytorium bikefit-studio-online na GitHubie.
+2. Otwórz plik app.py.
+3. Kliknij ikonę ołówka „Edit this file”.
+4. Usuń starą zawartość i wklej zawartość app.py z tej paczki.
+5. Kliknij „Commit changes”.
+6. Odczekaj około 1–3 minuty.
+7. W aplikacji Streamlit odśwież stronę. Gdy nadal widać starą wersję: Manage app → Reboot app.
+
+Co zmieniono:
+- usunięto zbyt szeroką regułę CSS, która wymuszała biały tekst we wszystkich elementach panelu,
+- przyciski Bike Insights, Geometry Geeks i 99 Spokes są teraz własnymi ciemnymi przyciskami HTML,
+- tekst przycisków jest zawsze biały na ciemnym tle,
+- zachowano import geometrii z linku i ręczną edycję geometrii,
+- wersja aplikacji została zmieniona na v1.3.
+
+Nie trzeba zmieniać plików w katalogu bikefit ani danych rowerów.

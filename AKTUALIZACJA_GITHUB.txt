@@ -1,0 +1,24 @@
+AKTUALIZACJA BIKEFIT STUDIO ONLINE v1.1
+
+Najprostsza aktualizacja istniejącej aplikacji:
+
+1. Wejdź do repozytorium GitHub: bikefit-studio-online.
+2. Kliknij plik app.py.
+3. Kliknij ikonę ołówka "Edit this file".
+4. Usuń całą dotychczasową zawartość.
+5. Otwórz dostarczony plik app.py, skopiuj całość i wklej do GitHuba.
+6. Kliknij "Commit changes...".
+7. Wpisz np. "Poprawa geometrii i czytelności pól".
+8. Kliknij "Commit changes".
+
+Streamlit powinien automatycznie wykryć commit i przeładować aplikację po około 1–3 minutach.
+W razie braku aktualizacji wejdź do aplikacji, kliknij Manage app i Reboot app.
+
+Zmiany v1.1:
+- ciemne tło i jasne wartości we wszystkich polach tekstowych/liczbowych,
+- wyraźniejsze przyciski +/− w polach liczbowych,
+- czytelne zakładki,
+- wybór modelu/geometrii w panelu bocznym,
+- pełny edytor geometrii w rozwijanym panelu po lewej,
+- możliwość zapisania własnej geometrii w bieżącej sesji,
+- zakładka geometrii pokazuje czytelne podsumowanie wszystkich wartości.

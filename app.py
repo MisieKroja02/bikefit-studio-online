@@ -31,7 +31,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v1.2 — MisieK",
+    page_title="BikeFit Studio Online v1.3 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -53,7 +53,14 @@ CSS = """
 }
 .stApp { background: radial-gradient(circle at 50% 8%, #12304a 0%, #08131e 40%, #06101a 100%); }
 [data-testid="stSidebar"] { background: linear-gradient(180deg, #101d2a 0%, #0b1722 100%); border-right: 1px solid #2d4357; }
-[data-testid="stSidebar"] * { color: var(--text); }
+[data-testid="stSidebar"] { color: var(--text); }
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3,
+[data-testid="stSidebar"] h4,
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] span:not([data-baseweb="tag"] span) { color: var(--text); }
 .block-container { padding-top: 1rem; padding-bottom: 3rem; }
 .brand-card {
   display:flex; align-items:center; gap:14px; padding:14px 16px; margin-bottom:12px;
@@ -185,10 +192,44 @@ li[role="option"]:hover, li[role="option"][aria-selected="true"] {background:#31
   color:#a7bed1 !important;
 }
 [data-testid="stSidebar"] .stButton > button,
-[data-testid="stSidebar"] .stDownloadButton > button,
-[data-testid="stSidebar"] [data-testid="stLinkButton"] a {
+[data-testid="stSidebar"] .stDownloadButton > button {
+  background:#173047 !important;
   color:#ffffff !important;
-  border-color:#466985 !important;
+  border:1px solid #466985 !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover,
+[data-testid="stSidebar"] .stDownloadButton > button:hover {
+  background:#214661 !important;
+  color:#ffffff !important;
+  border-color:#6d9abc !important;
+}
+.external-link-btn {
+  display:block;
+  width:100%;
+  box-sizing:border-box;
+  padding:0.52rem 0.68rem;
+  margin:0.30rem 0;
+  border-radius:0.55rem;
+  border:1px solid #466985;
+  background:#173047;
+  color:#ffffff !important;
+  font-weight:700;
+  font-size:0.88rem;
+  line-height:1.15rem;
+  text-decoration:none !important;
+  text-align:center;
+  box-shadow:none;
+}
+.external-link-btn:visited { color:#ffffff !important; }
+.external-link-btn:hover {
+  background:#214661;
+  color:#ffffff !important;
+  border-color:#6d9abc;
+  text-decoration:none !important;
+}
+.external-link-btn:focus {
+  outline:2px solid #67e4b5;
+  outline-offset:2px;
 }
 [data-testid="stSidebar"] [data-testid="stAlert"] {
   color:#f7fbff !important;
@@ -225,6 +266,16 @@ GEOMETRY_FIELDS = [
     ("Zasięg do chwytu [mm]", "hood_reach", 0.5),
     ("Długość korby [mm]", "crank_length", 0.5),
 ]
+
+
+def external_link_button(label: str, url: str) -> None:
+    """Renderuje niezawodny ciemny przycisk-link niezależny od motywu Streamlit."""
+    safe_label = html.escape(label)
+    safe_url = html.escape(url, quote=True)
+    st.markdown(
+        f'<a class="external-link-btn" href="{safe_url}" target="_blank" rel="noopener noreferrer">{safe_label}</a>',
+        unsafe_allow_html=True,
+    )
 
 
 def init_state() -> None:
@@ -517,7 +568,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v1.2</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v1.3</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -553,9 +604,9 @@ with st.sidebar:
 
     with st.expander("🌐 Import geometrii z linku", expanded=True):
         st.caption("Tak jak w wersji desktopowej: otwórz katalog, wybierz dokładny model, rocznik i rozmiar, a potem wklej adres strony roweru.")
-        st.link_button("Otwórz Bike Insights", "https://bikeinsights.com/search", use_container_width=True)
-        st.link_button("Otwórz Geometry Geeks", "https://geometrygeeks.bike/", use_container_width=True)
-        st.link_button("Otwórz 99 Spokes", "https://99spokes.com/", use_container_width=True)
+        external_link_button("Otwórz Bike Insights", "https://bikeinsights.com/search")
+        external_link_button("Otwórz Geometry Geeks", "https://geometrygeeks.bike/")
+        external_link_button("Otwórz 99 Spokes", "https://99spokes.com/")
         st.text_input(
             "Adres konkretnego modelu i rozmiaru",
             key="sidebar_import_url",
@@ -758,9 +809,12 @@ with import_tab:
     st.subheader("Import geometrii z internetu")
     st.write("Otwórz katalog, wybierz model, rocznik i rozmiar, a następnie wklej adres konkretnej strony roweru.")
     l1, l2, l3 = st.columns(3)
-    l1.link_button("Bike Insights", "https://bikeinsights.com/search", use_container_width=True)
-    l2.link_button("Geometry Geeks", "https://geometrygeeks.bike/", use_container_width=True)
-    l3.link_button("99 Spokes", "https://99spokes.com/", use_container_width=True)
+    with l1:
+        external_link_button("Bike Insights", "https://bikeinsights.com/search")
+    with l2:
+        external_link_button("Geometry Geeks", "https://geometrygeeks.bike/")
+    with l3:
+        external_link_button("99 Spokes", "https://99spokes.com/")
     url = st.text_input("Adres strony z geometrią", placeholder="https://...")
     if st.button("Pobierz i rozpoznaj geometrię", type="primary"):
         if not url:

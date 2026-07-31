@@ -1,4 +1,4 @@
-# BikeFit Studio Online
+# BikeFit Studio Online v1.3
 
 Internetowa wersja programu BikeFit Studio przygotowana do uruchomienia w przeglądarce i publikacji na Streamlit Community Cloud.
 
@@ -100,3 +100,29 @@ Aktualny silnik przechodzi 6 testów obliczeniowych.
 - ból, drętwienie, urazy i wyraźne asymetrie wymagają konsultacji ze specjalistą,
 - limity ciśnienia producenta opony i obręczy mają pierwszeństwo przed wynikiem kalkulatora,
 - część stron może blokować automatyczny import geometrii; wtedy wartości należy wpisać ręcznie.
+
+
+## Aktualizacja v1.1
+
+- poprawione białe wartości na białym tle,
+- wyraźne ciemne pola tekstowe i liczbowe,
+- wybór oraz pełna edycja geometrii bezpośrednio w panelu bocznym,
+- możliwość zapisania własnej geometrii w bieżącej sesji,
+- czytelniejsze zakładki i podsumowanie geometrii.
+
+
+## Aktualizacja v1.2
+
+- wymuszony ciemny motyw przez `.streamlit/config.toml`,
+- poprawione kolory pól tekstowych, liczbowych, list oraz rozwijanych sekcji,
+- import geometrii z linku dostępny bezpośrednio w panelu bocznym,
+- szybkie przyciski do Bike Insights, Geometry Geeks i 99 Spokes,
+- ręczna edycja geometrii pozostaje w osobnej sekcji.
+
+
+## Aktualizacja v1.3
+
+- naprawiono białe napisy na białych przyciskach w imporcie geometrii,
+- przyciski katalogów rowerowych są renderowane jako stabilne, ciemne przyciski HTML,
+- usunięto regułę CSS wymuszającą jasny tekst we wszystkich elementach panelu bocznego,
+- zachowano import geometrii z linku oraz ręczną edycję geometrii.
