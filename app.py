@@ -5,6 +5,7 @@ import ipaddress
 import json
 import math
 import socket
+import time
 from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlparse
@@ -31,7 +32,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v1.5 — MisieK",
+    page_title="BikeFit Studio Online v1.6 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -301,6 +302,10 @@ def init_state() -> None:
         "phase": 270.0,
         "show_measurements": True,
         "simulation_scale": 82.0,
+        "animate_crank": False,
+        "show_angles": True,
+        "animation_phase": 270.0,
+        "animation_last_ts": None,
         "fit_notes": [],
         "custom_bikes": [],
         "sidebar_import_url": "",
@@ -405,6 +410,25 @@ def apply_pending_state() -> None:
         st.session_state.fit_notes = list(notes)
         st.session_state.pending_fit_notes = None
 
+def display_phase_deg() -> float:
+    base_phase = float(st.session_state.get("phase", 270.0))
+    if not bool(st.session_state.get("animate_crank", False)):
+        st.session_state.animation_last_ts = None
+        st.session_state.animation_phase = base_phase
+        return base_phase
+
+    now = time.time()
+    current = float(st.session_state.get("animation_phase", base_phase))
+    last = st.session_state.get("animation_last_ts")
+    if last is None:
+        current = base_phase
+    else:
+        dt = max(0.0, min(0.5, now - float(last)))
+        current = (current + dt * float(st.session_state.get("cadence", 85.0)) * 6.0) % 360.0
+    st.session_state.animation_phase = current
+    st.session_state.animation_last_ts = now
+    return current
+
 
 def safe_import_url(url: str, fallback: BikeGeometry) -> tuple[BikeGeometry, list[str]]:
     parsed = urlparse(url.strip())
@@ -443,6 +467,7 @@ def render_bike_svg(
     phase: float,
     show_measurements: bool,
     display_scale_percent: float = 82.0,
+    show_angles: bool = True,
 ) -> str:
     pose = calculate_pose(bike, rider, settings, phase)
     bp = bike_points(bike, settings)
@@ -459,8 +484,8 @@ def render_bike_svg(
             xs.append(pt[0]); ys.append(pt[1])
     if pose.shoulder:
         ys.append(pose.shoulder[1] + 180)
-    min_x, max_x = min(xs) - 140, max(xs) + 140
-    min_y, max_y = min(ys) - 70, max(ys) + 120
+    min_x, max_x = min(xs) - 170, max(xs) + 170
+    min_y, max_y = min(ys) - 90, max(ys) + 135
     W, H = 1120, 610
     fit_scale = min((W - 90) / (max_x - min_x), (H - 80) / (max_y - min_y))
     user_scale = max(0.60, min(1.00, float(display_scale_percent) / 100.0))
@@ -473,10 +498,10 @@ def render_bike_svg(
     def T(p: tuple[float, float]) -> tuple[float, float]:
         return offset_x + (p[0] - min_x) * scale, H - offset_y - (p[1] - min_y) * scale
 
-    def line(a, b, color, width=5, dash=""):
+    def line(a, b, color, width=5, dash="", opacity=1.0):
         x1, y1 = T(a); x2, y2 = T(b)
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-        return f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{color}" stroke-width="{width}" stroke-linecap="round"{dash_attr}/>'
+        return f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{color}" stroke-width="{width}" stroke-linecap="round" opacity="{opacity}"{dash_attr}/>'
 
     def circle(p, r, fill, stroke="none", sw=0):
         x, y = T(p)
@@ -485,9 +510,27 @@ def render_bike_svg(
     def label(x, y, text, fill="#eef7ff", size=13, weight=600, anchor="middle"):
         return f'<text x="{x:.1f}" y="{y:.1f}" fill="{fill}" font-family="Segoe UI,Arial" font-size="{size}" font-weight="{weight}" text-anchor="{anchor}">{html.escape(str(text))}</text>'
 
+    def callout(x: float, y: float, title: str, value: str, color: str, anchor: str = "middle") -> str:
+        pad_x = 10
+        w = max(120, 8 * max(len(title), len(value)) + 16)
+        h = 38
+        if anchor == "start":
+            left = x
+        elif anchor == "end":
+            left = x - w
+        else:
+            left = x - w / 2
+        top = y - h / 2
+        txt_x = left + pad_x
+        return (
+            f'<rect x="{left:.1f}" y="{top:.1f}" width="{w:.1f}" height="{h:.1f}" rx="10" fill="#0f2131" opacity="0.95" stroke="{color}" stroke-width="1.6"/>'
+            + label(txt_x, top + 14, title, color, 11, 800, "start")
+            + label(txt_x, top + 29, value, "#f5fbff", 13, 800, "start")
+        )
+
     parts = [
         f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Symulacja pozycji na rowerze">',
-        '<defs><filter id="shadow"><feDropShadow dx="0" dy="4" stdDeviation="5" flood-opacity="0.32"/></filter></defs>',
+        '<defs><filter id="shadow"><feDropShadow dx="0" dy="4" stdDeviation="5" flood-opacity="0.32"/></filter><marker id="arr" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M8,0 L0,4 L8,8" fill="none" stroke="#ffffff" stroke-width="1.4"/></marker></defs>',
         f'<rect width="{W}" height="{H}" rx="22" fill="#07131e"/>',
         f'<ellipse cx="{W/2:.0f}" cy="{H/2:.0f}" rx="{W*0.43:.0f}" ry="{H*0.43:.0f}" fill="{colors["halo"]}" opacity="0.78"/>',
     ]
@@ -500,7 +543,6 @@ def render_bike_svg(
     x1, y_ground = T((min_x, ground_y)); x2, _ = T((max_x, ground_y))
     parts.append(f'<line x1="{x1:.1f}" y1="{y_ground:.1f}" x2="{x2:.1f}" y2="{y_ground:.1f}" stroke="#617386" stroke-width="3"/>')
 
-    # Wheels.
     for center, width_mm, bar, side in (
         (bp["rear_axle"], bike.tire_width_rear, pressure.rear_bar, "TYŁ"),
         (bp["front_axle"], bike.tire_width_front, pressure.front_bar, "PRZÓD"),
@@ -513,10 +555,9 @@ def render_bike_svg(
             rad = math.radians(angle); dx = (rr-tire_w)*math.cos(rad); dy=(rr-tire_w)*math.sin(rad)
             parts.append(f'<line x1="{cx-dx:.1f}" y1="{cy-dy:.1f}" x2="{cx+dx:.1f}" y2="{cy+dy:.1f}" stroke="#35485a" stroke-width="1"/>')
         parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="5" fill="#d8e1ea"/>')
-        parts.append(f'<rect x="{cx-83:.1f}" y="{cy+58:.1f}" width="166" height="28" rx="9" fill="#66e1b2"/>')
+        parts.append(f'<rect x="{cx-83:.1f}" y="{cy+58:.1f}" width="166" height="28" rx="9" fill="#66e1b2" opacity="0.96"/>')
         parts.append(label(cx, cy+77, f"{side}  {width_mm:.0f} mm  {bar:.2f} bar", "#07131e", 12, 800))
 
-    # Frame.
     for a, b in (
         (bp["rear_axle"], (0.0, 0.0)), (bp["rear_axle"], bp["seat_top"]),
         ((0.0, 0.0), bp["seat_top"]), (bp["seat_top"], bp["head_top"]),
@@ -530,14 +571,12 @@ def render_bike_svg(
     sx, sy = T(bp["saddle"])
     parts.append(f'<line x1="{sx-33:.1f}" y1="{sy:.1f}" x2="{sx+31:.1f}" y2="{sy-2:.1f}" stroke="#edf3f8" stroke-width="10" stroke-linecap="round"/>')
 
-    # Crank and rider.
     opposite = (-pose.pedal[0], -pose.pedal[1])
     parts.append(line((0, 0), opposite, "#708398", 4)); parts.append(line((0, 0), pose.pedal, "#67e4b5", 5))
     parts.append(circle((0, 0), 8, "#78baff")); parts.append(circle(pose.pedal, 5, "#67e4b5"))
     if pose.knee:
         parts += [line(pose.hip, pose.knee, "#f1c680", 12), line(pose.knee, pose.ankle, "#f1c680", 11), line(pose.ankle, pose.pedal, "#f1c680", 7)]
         for pt, r in ((pose.hip,8),(pose.knee,8),(pose.ankle,6)): parts.append(circle(pt,r,"#fff2d1"))
-        kx, ky = T(pose.knee); parts.append(label(kx+20, ky-20, f"{pose.knee_flexion:.1f}°", "#67e4b5", 13, 800, "start"))
     else:
         parts.append(line(pose.hip, pose.ankle, "#ff6c84", 5, "8 6"))
     if pose.shoulder and pose.elbow:
@@ -548,32 +587,63 @@ def render_bike_svg(
 
     parts.append(label(24, 28, f"{bike.name}  •  {settings.cadence:.0f} rpm  •  korba {phase:.0f}°", "#eef7ff", 15, 800, "start"))
 
+    bb = (0.0, 0.0); saddle = bp["saddle"]; hand = bp["hand"]
+    sta = math.radians(bike.seat_tube_angle)
+    saddle_axis_top = (-settings.saddle_height * math.cos(sta), settings.saddle_height * math.sin(sta))
+    setback = max(0.0, -saddle[0]); drop = saddle[1] - hand[1]; reach = hand[0] - saddle[0]
+    mx = {"M1":"#ffd166","M2":"#57d3ff","M3":"#ff83c6","M4":"#8dea7b","M5":"#ff9f5a"}
+
     if show_measurements:
-        bb = (0.0, 0.0); saddle = bp["saddle"]; hand = bp["hand"]
-        sta = math.radians(bike.seat_tube_angle)
-        saddle_axis_top = (-settings.saddle_height * math.cos(sta), settings.saddle_height * math.sin(sta))
-        setback = max(0.0, -saddle[0]); drop = saddle[1] - hand[1]; reach = hand[0] - saddle[0]
-        mx = {"M1":"#ffd166","M2":"#57d3ff","M3":"#ff83c6","M4":"#8dea7b","M5":"#ff9f5a"}
-        def dim(a,b,color):
-            x1,y1=T(a);x2,y2=T(b)
-            return f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{color}" stroke-width="3" marker-start="url(#arr)" marker-end="url(#arr)"/>'
-        parts.insert(1, '<defs><marker id="arr" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M8,0 L0,4 L8,8" fill="none" stroke="#ffffff" stroke-width="1.4"/></marker></defs>')
-        parts.append(dim(bb, saddle_axis_top, mx["M1"]))
-        bx,by=T(bb); sx2,sy2=T(saddle); hx,hy=T(hand)
-        m2y=min(sy2,hy)-45
-        parts.append(f'<line x1="{bx:.1f}" y1="{m2y:.1f}" x2="{sx2:.1f}" y2="{m2y:.1f}" stroke="{mx["M2"]}" stroke-width="3"/>')
-        parts.append(label((bx+sx2)/2,m2y-10,f"M2 {setback:.0f} mm za BB",mx["M2"],12,800))
-        m3x=max(sx2,hx)+48
-        parts.append(f'<line x1="{m3x:.1f}" y1="{sy2:.1f}" x2="{m3x:.1f}" y2="{hy:.1f}" stroke="{mx["M3"]}" stroke-width="3"/>')
-        parts.append(label(m3x+10,(sy2+hy)/2,f"M3 {drop:.0f} mm",mx["M3"],12,800,"start"))
-        m4y=y_ground-24
-        parts.append(f'<line x1="{sx2:.1f}" y1="{m4y:.1f}" x2="{hx:.1f}" y2="{m4y:.1f}" stroke="{mx["M4"]}" stroke-width="3"/>')
-        parts.append(label((sx2+hx)/2,m4y-10,f"M4 {reach:.0f} mm",mx["M4"],12,800))
-        px,py=T(pose.pedal)
-        parts.append(f'<line x1="{bx:.1f}" y1="{by:.1f}" x2="{px:.1f}" y2="{py:.1f}" stroke="{mx["M5"]}" stroke-width="3"/>')
-        parts.append(label((bx+px)/2+20,(by+py)/2+18,f"M5 {bike.crank_length:.1f} mm",mx["M5"],12,800))
+        bx, by = T(bb); sx2, sy2 = T(saddle); hx, hy = T(hand); px, py = T(pose.pedal)
+        saxt, sayt = T(saddle_axis_top)
+
+        def dim_line(x1, y1, x2, y2, color):
+            return f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{color}" stroke-width="3.4" marker-start="url(#arr)" marker-end="url(#arr)"/>'
+
+        parts.append(f'<line x1="{bx:.1f}" y1="{by:.1f}" x2="{saxt:.1f}" y2="{sayt:.1f}" stroke="{mx["M1"]}" stroke-width="4.2" marker-start="url(#arr)" marker-end="url(#arr)"/>')
+        midx = (bx + saxt) / 2 - 18; midy = (by + sayt) / 2
+        parts.append(callout(midx, midy, "M1 wysokość siodła", f"{settings.saddle_height:.0f} mm po osi sztycy", mx["M1"], "end"))
+
+        m2y = min(sy2, hy) - 64
+        parts.append(f'<line x1="{bx:.1f}" y1="{by:.1f}" x2="{bx:.1f}" y2="{m2y:.1f}" stroke="{mx["M2"]}" stroke-width="2" stroke-dasharray="7 6" opacity="0.9"/>')
+        parts.append(f'<line x1="{sx2:.1f}" y1="{sy2:.1f}" x2="{sx2:.1f}" y2="{m2y:.1f}" stroke="{mx["M2"]}" stroke-width="2" stroke-dasharray="7 6" opacity="0.9"/>')
+        parts.append(dim_line(bx, m2y, sx2, m2y, mx["M2"]))
+        parts.append(callout((bx+sx2)/2, m2y-26, "M2 setback S75", f"{setback:.0f} mm za BB", mx["M2"]))
+
+        m3x = max(sx2, hx) + 68
+        parts.append(f'<line x1="{sx2:.1f}" y1="{sy2:.1f}" x2="{m3x:.1f}" y2="{sy2:.1f}" stroke="{mx["M3"]}" stroke-width="2" stroke-dasharray="7 6" opacity="0.9"/>')
+        parts.append(f'<line x1="{hx:.1f}" y1="{hy:.1f}" x2="{m3x:.1f}" y2="{hy:.1f}" stroke="{mx["M3"]}" stroke-width="2" stroke-dasharray="7 6" opacity="0.9"/>')
+        parts.append(dim_line(m3x, sy2, m3x, hy, mx["M3"]))
+        parts.append(callout(m3x + 14, (sy2+hy)/2, "M3 drop siodło–chwyt", f"{drop:.0f} mm", mx["M3"], "start"))
+
+        m4y = y_ground - 42
+        parts.append(f'<line x1="{sx2:.1f}" y1="{sy2:.1f}" x2="{sx2:.1f}" y2="{m4y:.1f}" stroke="{mx["M4"]}" stroke-width="2" stroke-dasharray="7 6" opacity="0.9"/>')
+        parts.append(f'<line x1="{hx:.1f}" y1="{hy:.1f}" x2="{hx:.1f}" y2="{m4y:.1f}" stroke="{mx["M4"]}" stroke-width="2" stroke-dasharray="7 6" opacity="0.9"/>')
+        parts.append(dim_line(sx2, m4y, hx, m4y, mx["M4"]))
+        parts.append(callout((sx2+hx)/2, m4y-22, "M4 reach siodło–chwyt", f"{reach:.0f} mm", mx["M4"]))
+
+        parts.append(f'<line x1="{bx:.1f}" y1="{by:.1f}" x2="{px:.1f}" y2="{py:.1f}" stroke="{mx["M5"]}" stroke-width="3.2" marker-end="url(#arr)"/>')
+        parts.append(callout((bx+px)/2 + 40, (by+py)/2 + 18, "M5 długość korby", f"{bike.crank_length:.1f} mm", mx["M5"], "start"))
+
         for code, pt in (("BB",bb),("S75",saddle),("H",hand),("P",pose.pedal)):
-            x,y=T(pt); parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5" fill="#f4f7fb" stroke="#07131e"/>'); parts.append(label(x+10,y-10,code,"#f4f7fb",11,800,"start"))
+            x,y=T(pt)
+            parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="6" fill="#f4f7fb" stroke="#07131e" stroke-width="2"/>')
+            parts.append(label(x+12, y-10, code, "#f4f7fb", 11, 800, "start"))
+
+    if show_angles:
+        if pose.knee and pose.knee_flexion is not None:
+            kx, ky = T(pose.knee)
+            parts.append(callout(kx + 24, ky - 24, "Kąt kolana", f"{pose.knee_flexion:.1f}°", "#67e4b5", "start"))
+        if pose.hip_angle is not None:
+            hx0, hy0 = T(pose.hip)
+            parts.append(callout(hx0 - 18, hy0 - 60, "Otwarcie biodra", f"{pose.hip_angle:.1f}°", "#7bd7ff", "end"))
+        if pose.elbow and pose.elbow_angle is not None:
+            ex, ey = T(pose.elbow)
+            parts.append(callout(ex + 22, ey - 18, "Kąt łokcia", f"{pose.elbow_angle:.1f}°", "#ffd98a", "start"))
+        if pose.shoulder and pose.torso_angle is not None:
+            tx = (T(pose.shoulder)[0] + T(pose.hip)[0]) / 2
+            ty = (T(pose.shoulder)[1] + T(pose.hip)[1]) / 2 - 28
+            parts.append(callout(tx, ty, "Pochylenie tułowia", f"{pose.torso_angle:.1f}°", "#d6e4ff"))
 
     parts.append('</svg>')
     return "".join(parts)
@@ -600,7 +670,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v1.4</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v1.6</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -723,6 +793,8 @@ with st.sidebar:
     st.slider("Kadencja [rpm]", 40.0, 130.0, key="cadence", step=1.0)
     st.slider("Kąt stopy [°]", -20.0, 15.0, key="foot_angle", step=1.0)
     st.slider("Pozycja korby [°]", 0.0, 359.0, key="phase", step=1.0)
+    st.checkbox("Animacja korby wg kadencji", key="animate_crank", help="Po włączeniu korba obraca się automatycznie z prędkością wynikającą z kadencji.")
+    st.checkbox("Pokaż kąty na rysunku", key="show_angles")
     st.slider("Skala symulacji [%]", 65.0, 100.0, key="simulation_scale", step=1.0, help="Zmniejsz, aby cały rower i rowerzysta mieścili się wygodniej na ekranie.")
     st.checkbox("Pokaż wymiary M1–M5", key="show_measurements")
 
@@ -733,7 +805,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online</h1>
+  <h1>BikeFit Studio Online v1.6</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -753,13 +825,43 @@ main_tab, config_tab, tire_tab, geometry_tab, import_tab, report_tab = st.tabs([
 ])
 
 with main_tab:
-    st.markdown(render_bike_svg(bike, rider, settings, float(st.session_state.phase), bool(st.session_state.show_measurements), float(st.session_state.simulation_scale)), unsafe_allow_html=True)
+    def _render_simulation_block() -> None:
+        phase_to_draw = display_phase_deg()
+        st.markdown(
+            render_bike_svg(
+                bike,
+                rider,
+                settings,
+                phase_to_draw,
+                bool(st.session_state.show_measurements),
+                float(st.session_state.simulation_scale),
+                bool(st.session_state.show_angles),
+            ),
+            unsafe_allow_html=True,
+        )
+
+    if hasattr(st, "fragment"):
+        @st.fragment(run_every="250ms")
+        def live_simulation_fragment() -> None:
+            _render_simulation_block()
+
+        live_simulation_fragment()
+    else:
+        _render_simulation_block()
+
     cards = "".join(
         f'<div class="measure-card"><div class="measure-code" style="color:{color}">{code}</div><div class="measure-name">{name}</div><div class="measure-value">{value}</div></div>'
         for code, name, value, color in measurement_values(bike, settings)
     )
     st.markdown(f'<div class="measure-grid">{cards}</div>', unsafe_allow_html=True)
-    st.info("S75 oznacza środek siodła w miejscu, w którym siodło ma 75 mm szerokości. M1 jest mierzone od środka suportu po osi rury podsiodłowej i sztycy.")
+
+    a1, a2, a3, a4 = st.columns(4)
+    a1.info(f"**Kolano:** {analysis.knee_flexion_min:.1f}–{analysis.knee_flexion_max:.1f}°")
+    a2.info(f"**Biodro:** {analysis.hip_angle_min:.1f}–{analysis.hip_angle_max:.1f}°")
+    a3.info(f"**Łokieć:** {analysis.elbow_angle:.1f}°")
+    a4.info(f"**Tułów:** {analysis.torso_angle:.1f}°")
+
+    st.info("S75 oznacza środek siodła w miejscu, w którym siodło ma 75 mm szerokości. Na rysunku M1–M4 to główne wartości do ustawienia na realnym rowerze. Włącz animację, aby obserwować pełny ruch przy zadanej kadencji.")
 
 with config_tab:
     left, right = st.columns([1, 1])

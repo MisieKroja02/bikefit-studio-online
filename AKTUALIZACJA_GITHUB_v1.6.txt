@@ -1,0 +1,14 @@
+Aktualizacja BikeFit Studio Online v1.6
+
+Najprostsza metoda:
+1. Otwórz plik app.py w repozytorium GitHub.
+2. Kliknij Edit / ikonę ołówka.
+3. Wklej nową zawartość pliku app.py z paczki v1.6.
+4. Commit changes.
+5. W Streamlit w razie potrzeby użyj Manage app -> Reboot app.
+
+Nowości v1.6:
+- animacja korby wg kadencji,
+- pokazywanie kątów na rysunku,
+- wyraźniejsze oznaczenia M1-M5 na rysunku,
+- czytelniejsze podpowiedzi wartości do ustawienia na rowerze.
