@@ -1,0 +1,24 @@
+BIKEFIT STUDIO ONLINE v1.5 — NAPRAWA DOBORU USTAWIEŃ
+
+Naprawiony błąd StreamlitAPIException pojawiający się po kliknięciu:
+- Dobierz ustawienie bazowe
+- Optymalizuj aktualne ustawienie
+
+Przyczyna:
+Streamlit nie pozwala zmienić wartości session_state przypisanej do widżetu,
+jeżeli ten widżet został już utworzony w tym samym przebiegu strony.
+
+Naprawa:
+Nowe ustawienia są zapisywane do bezpiecznej kolejki i stosowane na początku
+następnego przebiegu aplikacji, zanim powstaną suwaki i listy wyboru.
+
+AKTUALIZACJA:
+1. Otwórz repozytorium GitHub bikefit-studio-online.
+2. Otwórz plik app.py.
+3. Kliknij ikonę ołówka Edit this file.
+4. Zastąp całą zawartość wersją app.py z tej paczki.
+5. Kliknij Commit changes.
+6. Zaczekaj na automatyczne wdrożenie Streamlit.
+7. W razie potrzeby: Manage app -> Reboot app.
+
+Pozostałych plików nie trzeba zmieniać.

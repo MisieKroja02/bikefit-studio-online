@@ -31,7 +31,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v1.4 — MisieK",
+    page_title="BikeFit Studio Online v1.5 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -306,6 +306,8 @@ def init_state() -> None:
         "sidebar_import_url": "",
         "sidebar_import_status": "",
         "sidebar_import_notes": [],
+        "pending_settings": None,
+        "pending_fit_notes": None,
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -372,14 +374,36 @@ def geometry_from_state(fallback: BikeGeometry) -> BikeGeometry:
     return BikeGeometry.from_dict(payload)
 
 
-def apply_settings(settings: FitSettings) -> None:
-    for key in (
-        "saddle_height", "saddle_fore_aft", "handlebar_stack_delta",
-        "handlebar_reach_delta", "cadence", "foot_angle", "style",
-        "gear_weight", "tire_setup", "tire_surface", "tire_casing",
-        "pressure_goal", "front_load_percent",
-    ):
-        setattr(st.session_state, key, getattr(settings, key))
+SETTINGS_KEYS = (
+    "saddle_height", "saddle_fore_aft", "handlebar_stack_delta",
+    "handlebar_reach_delta", "cadence", "foot_angle", "style",
+    "gear_weight", "tire_setup", "tire_surface", "tire_casing",
+    "pressure_goal", "front_load_percent",
+)
+
+
+def queue_settings(settings: FitSettings, notes: list[str] | None = None) -> None:
+    """Zapisuje zmiany do zastosowania na początku następnego przebiegu Streamlit.
+
+    Streamlit blokuje bezpośrednią zmianę session_state dla klucza widżetu
+    po utworzeniu tego widżetu w bieżącym przebiegu. Kolejka eliminuje ten
+    błąd przy przyciskach doboru i optymalizacji.
+    """
+    st.session_state.pending_settings = {key: getattr(settings, key) for key in SETTINGS_KEYS}
+    if notes is not None:
+        st.session_state.pending_fit_notes = list(notes)
+
+
+def apply_pending_state() -> None:
+    pending = st.session_state.get("pending_settings")
+    if pending:
+        for key, value in pending.items():
+            st.session_state[key] = value
+        st.session_state.pending_settings = None
+    notes = st.session_state.get("pending_fit_notes")
+    if notes is not None:
+        st.session_state.fit_notes = list(notes)
+        st.session_state.pending_fit_notes = None
 
 
 def safe_import_url(url: str, fallback: BikeGeometry) -> tuple[BikeGeometry, list[str]]:
@@ -587,6 +611,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
 
 
 init_state()
+apply_pending_state()
 
 # Sidebar branding.
 with st.sidebar:
@@ -681,15 +706,13 @@ with st.sidebar:
     rider = current_rider()
     if st.button("Dobierz ustawienie bazowe", use_container_width=True, type="primary"):
         rec = recommend_and_evaluate(rider, bike, st.session_state.style, st.session_state.flexibility)
-        apply_settings(rec.settings)
-        st.session_state.fit_notes = rec.notes
+        queue_settings(rec.settings, rec.notes)
         st.rerun()
 
     if st.button("Optymalizuj aktualne ustawienie", use_container_width=True):
         with st.spinner("Analizuję pełny obrót korby…"):
             result, analysis = optimize_fit(bike, rider, current_settings())
-        apply_settings(result)
-        st.session_state.fit_notes = [f"Optymalizacja zakończona wynikiem {analysis.score:.1f}/100."]
+        queue_settings(result, [f"Optymalizacja zakończona wynikiem {analysis.score:.1f}/100."])
         st.rerun()
 
     st.markdown("#### Regulacja")

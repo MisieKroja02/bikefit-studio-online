@@ -1,4 +1,4 @@
-# BikeFit Studio Online v1.4
+# BikeFit Studio Online v1.5
 
 Internetowa wersja programu BikeFit Studio przygotowana do uruchomienia w przeglądarce i publikacji na Streamlit Community Cloud.
 
@@ -120,7 +120,7 @@ Aktualny silnik przechodzi 6 testów obliczeniowych.
 - ręczna edycja geometrii pozostaje w osobnej sekcji.
 
 
-## Aktualizacja v1.4
+## Aktualizacja v1.5
 
 - naprawiono białe napisy na białych przyciskach w imporcie geometrii,
 - przyciski katalogów rowerowych są renderowane jako stabilne, ciemne przyciski HTML,
@@ -128,8 +128,13 @@ Aktualny silnik przechodzi 6 testów obliczeniowych.
 - zachowano import geometrii z linku oraz ręczną edycję geometrii.
 
 
-## Zmiany v1.4
+## Zmiany v1.5
 
 - mniejsza i wycentrowana symulacja,
 - niższe pole SVG,
 - suwak skali symulacji 65–100%, domyślnie 82%.
+
+
+## Naprawa doboru ustawień — v1.5
+
+Przyciski **Dobierz ustawienie bazowe** i **Optymalizuj aktualne ustawienie** wykorzystują teraz bezpieczną kolejkę zmian stanu. Eliminuje to błąd `StreamlitAPIException` związany ze zmianą wartości widżetu po jego utworzeniu.
