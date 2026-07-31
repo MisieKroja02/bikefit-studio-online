@@ -1,0 +1,14 @@
+Aktualizacja BikeFit Studio Online v2.1
+
+Naprawiony błąd StreamlitAPIException w sanitize_numeric_state().
+Przyczyną było modyfikowanie wartości session_state po utworzeniu widżetów.
+
+Aktualizacja:
+1. Otwórz app.py w repozytorium GitHub.
+2. Kliknij ikonę ołówka / Edit this file.
+3. Podmień całą zawartość na app.py z wersji v2.1.
+4. Kliknij Commit changes.
+5. Poczekaj na automatyczne wdrożenie Streamlit.
+6. W razie potrzeby: Manage app -> Reboot app, następnie Ctrl+F5.
+
+Nie trzeba podmieniać pozostałych plików.

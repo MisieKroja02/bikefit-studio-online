@@ -32,7 +32,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v2.0 — MisieK",
+    page_title="BikeFit Studio Online v2.1 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -415,7 +415,7 @@ def profile_login_gate() -> None:
 
 
 def current_settings() -> FitSettings:
-    sanitize_numeric_state()
+    """Zwraca ustawienia bez modyfikowania aktywnych widżetów Streamlit."""
     return FitSettings(
         saddle_height=float(st.session_state.saddle_height),
         saddle_fore_aft=float(st.session_state.saddle_fore_aft),
@@ -820,7 +820,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v2.0</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v2.1</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -981,7 +981,6 @@ with st.sidebar:
             st.success(st.session_state.fit_action_status)
 
     st.markdown("#### Regulacja")
-    sanitize_numeric_state()
     st.slider("M1 wysokość siodła [mm]", 500.0, 900.0, key="saddle_height", step=1.0)
     st.slider("Regulacja siodła na szynach [mm]", -60.0, 80.0, key="saddle_fore_aft", step=1.0)
     st.slider("Zmiana wysokości kierownicy [mm]", -60.0, 100.0, key="handlebar_stack_delta", step=1.0)
@@ -1006,7 +1005,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v2.0</h1>
+  <h1>BikeFit Studio Online v2.1</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)

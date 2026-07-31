@@ -1,4 +1,4 @@
-# BikeFit Studio Online v1.9
+# BikeFit Studio Online v2.1
 
 Internetowy konfigurator pozycji na rowerze. Autor: **MisieK**.
 
@@ -22,3 +22,8 @@ Dane nie są zapisywane na GitHubie ani na stałe na serwerze. Każdy użytkowni
 ## Aktualizacja Streamlit
 
 Podmień `app.py` w głównym katalogu repozytorium, wykonaj commit i w razie potrzeby uruchom `Manage app → Reboot app`.
+
+
+## Poprawka v2.1
+
+Usunięto modyfikowanie aktywnego `st.session_state` przez `sanitize_numeric_state()` po utworzeniu widżetów. Sanitizacja działa teraz tylko na początku przebiegu aplikacji.
