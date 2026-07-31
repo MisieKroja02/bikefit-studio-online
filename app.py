@@ -38,7 +38,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v1.7 — MisieK",
+    page_title="BikeFit Studio Online v1.8 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -325,6 +325,8 @@ def init_state() -> None:
         "sidebar_import_notes": [],
         "pending_settings": None,
         "pending_fit_notes": None,
+        "fit_action_status": "",
+        "fit_action_error": False,
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -610,15 +612,43 @@ SETTINGS_KEYS = (
 
 
 def queue_settings(settings: FitSettings, notes: list[str] | None = None) -> None:
-    """Zapisuje zmiany do zastosowania na początku następnego przebiegu Streamlit.
-
-    Streamlit blokuje bezpośrednią zmianę session_state dla klucza widżetu
-    po utworzeniu tego widżetu w bieżącym przebiegu. Kolejka eliminuje ten
-    błąd przy przyciskach doboru i optymalizacji.
-    """
+    """Zapisuje zmiany do zastosowania na początku następnego przebiegu Streamlit."""
     st.session_state.pending_settings = {key: getattr(settings, key) for key in SETTINGS_KEYS}
     if notes is not None:
         st.session_state.pending_fit_notes = list(notes)
+
+
+def prepare_base_fit(rider_payload: dict, bike_payload: dict) -> None:
+    """Callback przycisku — wylicza wynik przed ponownym rysowaniem widżetów."""
+    try:
+        rider = Rider.from_dict(rider_payload)
+        bike = BikeGeometry.from_dict(bike_payload)
+        rec = recommend_and_evaluate(
+            rider,
+            bike,
+            str(st.session_state.get("style", "Zrównoważona")),
+            str(st.session_state.get("flexibility", "Średnia")),
+        )
+        queue_settings(rec.settings, rec.notes)
+        st.session_state.fit_action_status = "Dobrano ustawienie bazowe. Sprawdź wartości M1–M4 i wykonuj zmiany na rowerze stopniowo."
+        st.session_state.fit_action_error = False
+    except Exception as exc:
+        st.session_state.fit_action_status = f"Nie udało się dobrać ustawienia: {exc}"
+        st.session_state.fit_action_error = True
+
+
+def prepare_optimized_fit(rider_payload: dict, bike_payload: dict) -> None:
+    """Callback optymalizacji, który nie modyfikuje aktywnych widżetów w trakcie renderowania."""
+    try:
+        rider = Rider.from_dict(rider_payload)
+        bike = BikeGeometry.from_dict(bike_payload)
+        result, analysis = optimize_fit(bike, rider, current_settings())
+        queue_settings(result, [f"Optymalizacja zakończona wynikiem {analysis.score:.1f}/100."])
+        st.session_state.fit_action_status = f"Optymalizacja zakończona: {analysis.score:.1f}/100."
+        st.session_state.fit_action_error = False
+    except Exception as exc:
+        st.session_state.fit_action_status = f"Nie udało się zoptymalizować ustawienia: {exc}"
+        st.session_state.fit_action_error = True
 
 
 def apply_pending_state() -> None:
@@ -922,7 +952,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v1.7</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v1.8</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1035,7 +1065,7 @@ with st.sidebar:
         profile_payload = build_profile_payload(bike, rider, current_settings())
         storage_ready = github_storage_config() is not None
         if st.button(
-            "Zapisz mój profil na GitHubie",
+            "Zapisz",
             key="save_user_profile",
             use_container_width=True,
             type="primary",
@@ -1065,16 +1095,28 @@ with st.sidebar:
                 del st.session_state[session_key]
             st.rerun()
 
-    if st.button("Dobierz ustawienie bazowe", use_container_width=True, type="primary"):
-        rec = recommend_and_evaluate(rider, bike, st.session_state.style, st.session_state.flexibility)
-        queue_settings(rec.settings, rec.notes)
-        st.rerun()
+    st.button(
+        "Dobierz ustawienie bazowe",
+        key="base_fit_button",
+        use_container_width=True,
+        type="primary",
+        on_click=prepare_base_fit,
+        args=(rider.to_dict(), bike.to_dict()),
+    )
 
-    if st.button("Optymalizuj aktualne ustawienie", use_container_width=True):
-        with st.spinner("Analizuję pełny obrót korby…"):
-            result, analysis = optimize_fit(bike, rider, current_settings())
-        queue_settings(result, [f"Optymalizacja zakończona wynikiem {analysis.score:.1f}/100."])
-        st.rerun()
+    st.button(
+        "Optymalizuj aktualne ustawienie",
+        key="optimize_fit_button",
+        use_container_width=True,
+        on_click=prepare_optimized_fit,
+        args=(rider.to_dict(), bike.to_dict()),
+    )
+
+    if st.session_state.fit_action_status:
+        if st.session_state.fit_action_error:
+            st.error(st.session_state.fit_action_status)
+        else:
+            st.success(st.session_state.fit_action_status)
 
     st.markdown("#### Regulacja")
     st.slider("M1 wysokość siodła [mm]", 620.0, 850.0, key="saddle_height", step=1.0)
@@ -1101,7 +1143,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v1.7</h1>
+  <h1>BikeFit Studio Online v1.8</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)

@@ -1,0 +1,71 @@
+BIKEFIT STUDIO ONLINE v1.7 — KONFIGURACJA PROFILI W GITHUB
+
+Ta wersja pozwala wysłać jeden link wielu osobom.
+Każda osoba podaje:
+- imię lub pseudonim,
+- własny kod profilu (minimum 4 znaki).
+
+Ten sam pseudonim + kod ponownie otwierają ten sam zapisany profil.
+Każdy profil jest zapisywany jako osobny plik JSON.
+
+ZALECANY UKŁAD
+
+1. Repozytorium aplikacji:
+   MisieKroja02/bikefit-studio-online
+   Może pozostać publiczne.
+
+2. Osobne repozytorium danych:
+   MisieKroja02/bikefit-studio-data
+   Ustaw je jako PRIVATE.
+
+Nie zapisuj profili użytkowników w publicznym repozytorium aplikacji, ponieważ
+w profilu znajdują się wzrost, przekrok, masa i ustawienia roweru.
+
+KROK 1 — UTWÓRZ PRYWATNE REPOZYTORIUM DANYCH
+
+1. Na GitHubie kliknij New repository.
+2. Nazwa: bikefit-studio-data
+3. Widoczność: Private.
+4. Zaznacz Add a README file, aby powstała gałąź main.
+5. Kliknij Create repository.
+
+KROK 2 — UTWÓRZ TOKEN GITHUB
+
+1. GitHub -> Settings -> Developer settings -> Personal access tokens.
+2. Utwórz Fine-grained personal access token.
+3. Repository access: Only select repositories.
+4. Wybierz wyłącznie bikefit-studio-data.
+5. Permissions -> Repository permissions -> Contents: Read and write.
+6. Utwórz token i skopiuj go. GitHub pokaże go tylko raz.
+
+KROK 3 — DODAJ SEKRETY W STREAMLIT
+
+1. Otwórz wdrożoną aplikację w Streamlit Cloud.
+2. Manage app -> Settings -> Secrets.
+3. Wklej:
+
+[github]
+token = "TU_WKLEJ_TOKEN"
+owner = "MisieKroja02"
+repo = "bikefit-studio-data"
+branch = "main"
+folder = "profiles"
+
+4. Zapisz ustawienia.
+5. Reboot app.
+
+WAŻNE
+
+- Nigdy nie wpisuj tokenu bezpośrednio do app.py.
+- Nie dodawaj prawdziwego tokenu do pliku secrets.toml na GitHubie.
+- Każdy zapis profilu tworzy lub aktualizuje osobny plik w folderze profiles.
+- Dwie osoby o tym samym pseudonimie powinny mieć różne kody profilu.
+- Kod profilu nie jest hasłem bankowym. Użytkownik nie powinien używać hasła
+  z poczty, banku ani innych usług.
+
+AKTUALIZACJA APLIKACJI
+
+Podmień app.py na wersję v1.7 i dodaj plik:
+.streamlit/secrets.example.toml
+
+Prawdziwe sekrety dodaje się wyłącznie w panelu Streamlit Cloud.

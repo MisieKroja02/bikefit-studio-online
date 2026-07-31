@@ -1,0 +1,15 @@
+BikeFit Studio Online v1.8 — aktualizacja
+
+Naprawiono:
+- pusty ekran po kliknięciu „Dobierz ustawienie bazowe”,
+- bezpieczne stosowanie ustawień przed ponownym utworzeniem suwaków,
+- obsługę błędów: komunikat pojawia się w panelu zamiast zatrzymywać aplikację,
+- przycisk „Zapisz mój profil na GitHubie” ma teraz nazwę „Zapisz”.
+
+Aktualizacja:
+1. W repozytorium GitHub otwórz app.py.
+2. Kliknij ikonę ołówka.
+3. Podmień całą zawartość na app.py z wersji v1.8.
+4. Kliknij Commit changes.
+5. Poczekaj na automatyczne wdrożenie Streamlit.
+6. W razie potrzeby: Manage app -> Reboot app, następnie Ctrl+F5.
