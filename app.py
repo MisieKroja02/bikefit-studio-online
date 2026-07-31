@@ -1,20 +1,14 @@
 from __future__ import annotations
 
-import base64
-import hashlib
 import html
 import ipaddress
 import json
-import re
 import math
 import socket
 import time
-from datetime import datetime, timezone
 from dataclasses import replace
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlparse
-from urllib.request import Request, urlopen
+from urllib.parse import urlparse
 
 import streamlit as st
 
@@ -38,7 +32,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v1.8 — MisieK",
+    page_title="BikeFit Studio Online v1.9 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -315,188 +309,21 @@ def init_state() -> None:
         "animation_speed": 1.0,
         "user_logged_in": False,
         "user_alias": "",
-        "user_pin": "",
-        "profile_storage_status": "",
-        "profile_loaded_from_github": False,
         "fit_notes": [],
         "custom_bikes": [],
         "sidebar_import_url": "",
         "sidebar_import_status": "",
         "sidebar_import_notes": [],
-        "pending_settings": None,
-        "pending_fit_notes": None,
         "fit_action_status": "",
         "fit_action_error": False,
+        "pending_profile_payload": None,
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
 
 
-def github_storage_config() -> dict[str, str] | None:
-    """Zwraca konfigurację prywatnego repozytorium danych ze Streamlit Secrets."""
-    try:
-        section = st.secrets["github"]
-        config = {
-            "token": str(section["token"]),
-            "owner": str(section["owner"]),
-            "repo": str(section["repo"]),
-            "branch": str(section.get("branch", "main")),
-            "folder": str(section.get("folder", "profiles")).strip("/"),
-        }
-        if not all(config.values()):
-            return None
-        return config
-    except Exception:
-        return None
-
-
-def profile_storage_key(alias: str, pin: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", alias.casefold()).strip("-")[:36] or "profil"
-    digest = hashlib.sha256(f"{alias.casefold()}|{pin}".encode("utf-8")).hexdigest()[:12]
-    return f"{slug}-{digest}"
-
-
-def github_api_request(method: str, api_url: str, token: str, payload: dict | None = None) -> dict:
-    body = None if payload is None else json.dumps(payload).encode("utf-8")
-    request = Request(
-        api_url,
-        data=body,
-        method=method,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "BikeFit-Studio-Online",
-            "Content-Type": "application/json",
-        },
-    )
-    try:
-        with urlopen(request, timeout=20) as response:
-            raw = response.read().decode("utf-8")
-            return json.loads(raw) if raw else {}
-    except HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        if exc.code == 404:
-            raise FileNotFoundError("Profil nie istnieje.") from exc
-        raise RuntimeError(f"GitHub API HTTP {exc.code}: {detail[:300]}") from exc
-    except URLError as exc:
-        raise RuntimeError(f"Brak połączenia z GitHubem: {exc.reason}") from exc
-
-
-def github_profile_path(alias: str, pin: str, config: dict[str, str]) -> str:
-    return f"{config['folder']}/{profile_storage_key(alias, pin)}.json"
-
-
-def github_load_profile(alias: str, pin: str) -> dict | None:
-    config = github_storage_config()
-    if config is None:
-        return None
-    path = github_profile_path(alias, pin, config)
-    encoded_path = quote(path, safe="/")
-    url = (
-        f"https://api.github.com/repos/{quote(config['owner'])}/{quote(config['repo'])}"
-        f"/contents/{encoded_path}?ref={quote(config['branch'])}"
-    )
-    try:
-        result = github_api_request("GET", url, config["token"])
-    except FileNotFoundError:
-        return None
-    content = str(result.get("content", "")).replace("\n", "")
-    if not content:
-        return None
-    return json.loads(base64.b64decode(content).decode("utf-8"))
-
-
-def build_profile_payload(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> dict:
-    return {
-        "schema_version": 1,
-        "saved_at_utc": datetime.now(timezone.utc).isoformat(),
-        "alias": str(st.session_state.user_alias),
-        "bike": bike.to_dict(),
-        "rider": rider.to_dict(),
-        "settings": settings.to_dict(),
-        "ui": {
-            "phase": float(st.session_state.phase),
-            "simulation_scale": float(st.session_state.simulation_scale),
-            "show_measurements": bool(st.session_state.show_measurements),
-            "show_angles": bool(st.session_state.show_angles),
-            "animation_speed": float(st.session_state.animation_speed),
-        },
-        "custom_bikes": list(st.session_state.custom_bikes),
-        "fit_notes": list(st.session_state.fit_notes),
-    }
-
-
-def github_save_profile(alias: str, pin: str, payload: dict) -> str:
-    config = github_storage_config()
-    if config is None:
-        raise RuntimeError("Zapis GitHub nie jest jeszcze skonfigurowany w Streamlit Secrets.")
-    path = github_profile_path(alias, pin, config)
-    encoded_path = quote(path, safe="/")
-    url = (
-        f"https://api.github.com/repos/{quote(config['owner'])}/{quote(config['repo'])}"
-        f"/contents/{encoded_path}"
-    )
-    sha = None
-    try:
-        existing = github_api_request(
-            "GET",
-            f"{url}?ref={quote(config['branch'])}",
-            config["token"],
-        )
-        sha = existing.get("sha")
-    except FileNotFoundError:
-        sha = None
-
-    request_payload = {
-        "message": f"Zapis profilu BikeFit: {alias}",
-        "content": base64.b64encode(
-            json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-        ).decode("ascii"),
-        "branch": config["branch"],
-    }
-    if sha:
-        request_payload["sha"] = sha
-    github_api_request("PUT", url, config["token"], request_payload)
-    return path
-
-
-def apply_profile_payload(payload: dict) -> None:
-    rider_data = payload.get("rider", {})
-    settings_data = payload.get("settings", {})
-    ui_data = payload.get("ui", {})
-    bike_data = payload.get("bike", {})
-
-    rider = Rider.from_dict(rider_data)
-    settings = FitSettings.from_dict(settings_data)
-    st.session_state.profile_name = rider.name
-    st.session_state.height = float(rider.height)
-    st.session_state.inseam = float(rider.inseam)
-    st.session_state.weight = float(rider.weight)
-    st.session_state.flexibility = str(rider.flexibility)
-    for key in SETTINGS_KEYS:
-        if hasattr(settings, key):
-            st.session_state[key] = getattr(settings, key)
-
-    st.session_state.phase = float(ui_data.get("phase", 270.0))
-    st.session_state.animation_phase = st.session_state.phase
-    st.session_state.simulation_scale = float(ui_data.get("simulation_scale", 82.0))
-    st.session_state.show_measurements = bool(ui_data.get("show_measurements", True))
-    st.session_state.show_angles = bool(ui_data.get("show_angles", True))
-    st.session_state.animation_speed = float(ui_data.get("animation_speed", 1.0))
-    st.session_state.custom_bikes = list(payload.get("custom_bikes", []))
-    st.session_state.fit_notes = list(payload.get("fit_notes", []))
-
-    if bike_data:
-        saved_bike = BikeGeometry.from_dict(bike_data)
-        st.session_state.custom_bikes = [
-            item for item in st.session_state.custom_bikes if item.get("name") != saved_bike.name
-        ] + [saved_bike.to_dict()]
-        st.session_state.selected_bike = saved_bike.name
-        st.session_state.geometry_for = None
-
-
 def profile_login_gate() -> None:
+    """Prosty ekran wejścia. Każda karta/przeglądarka ma własną sesję użytkownika."""
     if bool(st.session_state.user_logged_in):
         return
 
@@ -505,40 +332,18 @@ def profile_login_gate() -> None:
         if LOGO_FILE.exists():
             st.image(str(LOGO_FILE), width=120)
         st.markdown("## BikeFit Studio Online")
-        st.write("Wpisz imię lub pseudonim. Ten sam pseudonim i kod otworzą później zapisany profil.")
+        st.write("Wpisz imię lub pseudonim, aby rozpocząć własną konfigurację.")
         alias = st.text_input("Imię lub pseudonim", key="login_alias", max_chars=40)
-        pin = st.text_input(
-            "Kod profilu (minimum 4 znaki)",
-            key="login_pin",
-            type="password",
-            max_chars=20,
-            help="Kod rozróżnia osoby o takim samym pseudonimie i ogranicza przypadkowe otwarcie cudzego profilu.",
-        )
-        if github_storage_config() is None:
-            st.warning("Aplikacja działa, ale zapis na GitHubie nie jest jeszcze skonfigurowany przez właściciela.")
         if st.button("Wejdź do konfiguratora", type="primary", use_container_width=True):
             clean_alias = alias.strip()
             if len(clean_alias) < 2:
                 st.error("Wpisz imię lub pseudonim składający się z co najmniej 2 znaków.")
-            elif len(pin) < 4:
-                st.error("Kod profilu musi mieć co najmniej 4 znaki.")
             else:
                 st.session_state.user_alias = clean_alias
-                st.session_state.user_pin = pin
                 st.session_state.user_logged_in = True
                 st.session_state.profile_name = clean_alias
-                try:
-                    saved = github_load_profile(clean_alias, pin)
-                    if saved:
-                        apply_profile_payload(saved)
-                        st.session_state.profile_loaded_from_github = True
-                        st.session_state.profile_storage_status = "Wczytano zapisany profil z GitHuba."
-                    else:
-                        st.session_state.profile_storage_status = "Utworzono nowy profil."
-                except Exception as exc:
-                    st.session_state.profile_storage_status = f"Nie udało się wczytać profilu: {exc}"
                 st.rerun()
-        st.caption("Nie używaj hasła do banku, poczty ani innych usług. To wyłącznie kod profilu BikeFit.")
+        st.caption("Każda osoba korzystająca z linku otrzymuje niezależną sesję w swojej przeglądarce.")
     st.stop()
 
 
@@ -611,56 +416,50 @@ SETTINGS_KEYS = (
 )
 
 
-def queue_settings(settings: FitSettings, notes: list[str] | None = None) -> None:
-    """Zapisuje zmiany do zastosowania na początku następnego przebiegu Streamlit."""
-    st.session_state.pending_settings = {key: getattr(settings, key) for key in SETTINGS_KEYS}
-    if notes is not None:
-        st.session_state.pending_fit_notes = list(notes)
+def apply_fit_result(settings: FitSettings, notes: list[str], status: str) -> None:
+    """Stosuje wynik przed utworzeniem suwaków w bieżącym przebiegu Streamlit."""
+    for key in SETTINGS_KEYS:
+        # Lista stylu jest już utworzona wyżej w panelu; wartość pozostaje zgodna
+        # z wybranym profilem, więc nie modyfikujemy aktywnego widżetu.
+        if key == "style":
+            continue
+        st.session_state[key] = getattr(settings, key)
+    st.session_state.fit_notes = list(notes)
+    # Zatrzymujemy animację, aby pełne przeliczenie nie ścigało się z fragmentem SVG.
+    st.session_state.animate_crank = False
+    st.session_state.animation_last_ts = None
+    st.session_state.animation_phase = float(st.session_state.get("phase", 270.0))
+    st.session_state.fit_action_status = status
+    st.session_state.fit_action_error = False
 
 
-def prepare_base_fit(rider_payload: dict, bike_payload: dict) -> None:
-    """Callback przycisku — wylicza wynik przed ponownym rysowaniem widżetów."""
-    try:
-        rider = Rider.from_dict(rider_payload)
-        bike = BikeGeometry.from_dict(bike_payload)
-        rec = recommend_and_evaluate(
-            rider,
-            bike,
-            str(st.session_state.get("style", "Zrównoważona")),
-            str(st.session_state.get("flexibility", "Średnia")),
-        )
-        queue_settings(rec.settings, rec.notes)
-        st.session_state.fit_action_status = "Dobrano ustawienie bazowe. Sprawdź wartości M1–M4 i wykonuj zmiany na rowerze stopniowo."
-        st.session_state.fit_action_error = False
-    except Exception as exc:
-        st.session_state.fit_action_status = f"Nie udało się dobrać ustawienia: {exc}"
-        st.session_state.fit_action_error = True
+def apply_pending_profile_payload() -> None:
+    payload = st.session_state.get("pending_profile_payload")
+    if not payload:
+        return
+    imported_bike = BikeGeometry.from_dict(payload.get("bike", {}))
+    imported_rider = Rider.from_dict(payload.get("rider", {}))
+    imported_settings = FitSettings.from_dict(payload.get("settings", {}))
 
+    st.session_state.custom_bikes = [
+        item for item in st.session_state.custom_bikes
+        if item.get("name") != imported_bike.name
+    ] + [imported_bike.to_dict()]
+    st.session_state.selected_bike = imported_bike.name
+    st.session_state.geometry_for = None
+    st.session_state.profile_name = imported_rider.name
+    st.session_state.height = float(imported_rider.height)
+    st.session_state.inseam = float(imported_rider.inseam)
+    st.session_state.weight = float(imported_rider.weight)
+    st.session_state.flexibility = str(imported_rider.flexibility)
+    for key in SETTINGS_KEYS:
+        st.session_state[key] = getattr(imported_settings, key)
+    st.session_state.animate_crank = False
+    st.session_state.animation_last_ts = None
+    st.session_state.pending_profile_payload = None
+    st.session_state.fit_action_status = "Wczytano profil z pliku JSON."
+    st.session_state.fit_action_error = False
 
-def prepare_optimized_fit(rider_payload: dict, bike_payload: dict) -> None:
-    """Callback optymalizacji, który nie modyfikuje aktywnych widżetów w trakcie renderowania."""
-    try:
-        rider = Rider.from_dict(rider_payload)
-        bike = BikeGeometry.from_dict(bike_payload)
-        result, analysis = optimize_fit(bike, rider, current_settings())
-        queue_settings(result, [f"Optymalizacja zakończona wynikiem {analysis.score:.1f}/100."])
-        st.session_state.fit_action_status = f"Optymalizacja zakończona: {analysis.score:.1f}/100."
-        st.session_state.fit_action_error = False
-    except Exception as exc:
-        st.session_state.fit_action_status = f"Nie udało się zoptymalizować ustawienia: {exc}"
-        st.session_state.fit_action_error = True
-
-
-def apply_pending_state() -> None:
-    pending = st.session_state.get("pending_settings")
-    if pending:
-        for key, value in pending.items():
-            st.session_state[key] = value
-        st.session_state.pending_settings = None
-    notes = st.session_state.get("pending_fit_notes")
-    if notes is not None:
-        st.session_state.fit_notes = list(notes)
-        st.session_state.pending_fit_notes = None
 
 def start_crank_animation() -> None:
     st.session_state.animate_crank = True
@@ -952,7 +751,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v1.8</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v1.9</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -963,7 +762,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
 
 
 init_state()
-apply_pending_state()
+apply_pending_profile_payload()
 profile_login_gate()
 
 # Sidebar branding.
@@ -973,8 +772,6 @@ with st.sidebar:
     st.markdown("### BikeFit Studio Online")
     st.caption("Autor: **MisieK**")
     st.success(f"Profil: {st.session_state.user_alias}")
-    if st.session_state.profile_storage_status:
-        st.caption(st.session_state.profile_storage_status)
     st.markdown("---")
 
     catalog = bike_catalog()
@@ -1061,56 +858,51 @@ with st.sidebar:
 
     rider = current_rider()
 
-    with st.expander("💾 Mój profil i zapis", expanded=True):
-        profile_payload = build_profile_payload(bike, rider, current_settings())
-        storage_ready = github_storage_config() is not None
-        if st.button(
-            "Zapisz",
-            key="save_user_profile",
-            use_container_width=True,
-            type="primary",
-            disabled=not storage_ready,
-        ):
-            try:
-                saved_path = github_save_profile(
-                    str(st.session_state.user_alias),
-                    str(st.session_state.user_pin),
-                    build_profile_payload(bike, current_rider(), current_settings()),
-                )
-                st.session_state.profile_storage_status = f"Zapisano profil: {saved_path}"
-                st.success("Profil został zapisany. Przy następnym wejściu użyj tego samego pseudonimu i kodu.")
-            except Exception as exc:
-                st.error(f"Nie udało się zapisać profilu: {exc}")
-        if not storage_ready:
-            st.caption("Właściciel aplikacji musi dodać token i repozytorium w Streamlit Secrets.")
-        st.download_button(
-            "Pobierz kopię profilu JSON",
-            data=json.dumps(profile_payload, ensure_ascii=False, indent=2),
-            file_name=f"bikefit_{profile_storage_key(str(st.session_state.user_alias), str(st.session_state.user_pin))}.json",
-            mime="application/json",
-            use_container_width=True,
-        )
-        if st.button("Wyloguj / zmień użytkownika", key="logout_profile", use_container_width=True):
-            for session_key in list(st.session_state.keys()):
-                del st.session_state[session_key]
-            st.rerun()
+    if st.button("Zmień użytkownika", key="logout_profile", use_container_width=True):
+        for session_key in list(st.session_state.keys()):
+            del st.session_state[session_key]
+        st.rerun()
 
-    st.button(
+    if st.button(
         "Dobierz ustawienie bazowe",
         key="base_fit_button",
         use_container_width=True,
         type="primary",
-        on_click=prepare_base_fit,
-        args=(rider.to_dict(), bike.to_dict()),
-    )
+    ):
+        try:
+            rec = recommend_and_evaluate(
+                rider,
+                bike,
+                str(st.session_state.style),
+                str(st.session_state.flexibility),
+            )
+            apply_fit_result(
+                rec.settings,
+                rec.notes,
+                "Dobrano ustawienie bazowe. Sprawdź wartości M1–M4 i wprowadzaj zmiany stopniowo.",
+            )
+        except Exception as exc:
+            st.session_state.fit_action_status = f"Nie udało się dobrać ustawienia: {exc}"
+            st.session_state.fit_action_error = True
 
-    st.button(
+    if st.button(
         "Optymalizuj aktualne ustawienie",
         key="optimize_fit_button",
         use_container_width=True,
-        on_click=prepare_optimized_fit,
-        args=(rider.to_dict(), bike.to_dict()),
-    )
+    ):
+        try:
+            with st.spinner("Analizuję pełny obrót korby…"):
+                result, optimized_analysis = optimize_fit(bike, rider, current_settings())
+            apply_fit_result(
+                result,
+                [f"Optymalizacja zakończona wynikiem {optimized_analysis.score:.1f}/100."],
+                f"Optymalizacja zakończona: {optimized_analysis.score:.1f}/100.",
+            )
+        except Exception as exc:
+            st.session_state.fit_action_status = f"Nie udało się zoptymalizować ustawienia: {exc}"
+            st.session_state.fit_action_error = True
+
+    # Poniżej są suwaki korzystające już z nowych wartości.
 
     if st.session_state.fit_action_status:
         if st.session_state.fit_action_error:
@@ -1143,7 +935,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v1.8</h1>
+  <h1>BikeFit Studio Online v1.9</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1178,7 +970,7 @@ with main_tab:
             unsafe_allow_html=True,
         )
 
-    if hasattr(st, "fragment"):
+    if bool(st.session_state.animate_crank) and hasattr(st, "fragment"):
         @st.fragment(run_every="250ms")
         def live_simulation_fragment() -> None:
             _render_simulation_block()
@@ -1338,7 +1130,7 @@ with import_tab:
     st.caption("Niektóre strony blokują automatyczny odczyt. W takim przypadku przepisz wartości w zakładce geometrii.")
 
 with report_tab:
-    st.subheader("Zapis profilu i raport")
+    st.subheader("Raport i kopia profilu")
     profile = {
         "bike": bike.to_dict(),
         "rider": rider.to_dict(),
@@ -1365,16 +1157,11 @@ with report_tab:
             imported_bike = BikeGeometry.from_dict(payload.get("bike", {}))
             imported_rider = Rider.from_dict(payload.get("rider", {}))
             imported_settings = FitSettings.from_dict(payload.get("settings", {}))
-            st.session_state.custom_bikes = [p for p in st.session_state.custom_bikes if p.get("name") != imported_bike.name] + [imported_bike.to_dict()]
-            st.session_state.selected_bike = imported_bike.name
-            reset_geometry_state(imported_bike)
-            st.session_state.geometry_for = imported_bike.name
-            st.session_state.profile_name = imported_rider.name
-            st.session_state.height = imported_rider.height
-            st.session_state.inseam = imported_rider.inseam
-            st.session_state.weight = imported_rider.weight
-            st.session_state.flexibility = imported_rider.flexibility
-            apply_settings(imported_settings)
+            st.session_state.pending_profile_payload = {
+                "bike": imported_bike.to_dict(),
+                "rider": imported_rider.to_dict(),
+                "settings": imported_settings.to_dict(),
+            }
             st.rerun()
         except Exception as exc:
             st.error(f"Nie udało się wczytać profilu: {exc}")

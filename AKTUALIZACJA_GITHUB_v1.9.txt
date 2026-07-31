@@ -1,0 +1,15 @@
+AKTUALIZACJA BIKEFIT STUDIO ONLINE DO v1.9
+
+1. W repozytorium GitHub otwórz app.py.
+2. Kliknij ikonę ołówka / Edit this file.
+3. Podmień całą zawartość na plik app.py z paczki v1.9.
+4. Kliknij Commit changes.
+5. Poczekaj na automatyczne wdrożenie Streamlit.
+6. Gdy nadal widzisz poprzednią wersję: Manage app -> Reboot app, potem Ctrl+F5.
+
+Naprawiono:
+- pusty biały ekran po „Dobierz ustawienie bazowe”,
+- konflikt pełnego przeliczenia z fragmentem animacji,
+- usunięto zapis profili na GitHubie,
+- ekran wejścia wymaga już tylko imienia lub pseudonimu,
+- każda osoba korzystająca z linku ma niezależną sesję przeglądarki.

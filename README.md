@@ -1,85 +1,24 @@
-# BikeFit Studio Online v1.7
+# BikeFit Studio Online v1.9
 
-Internetowy konfigurator pozycji na rowerze działający w przeglądarce.
+Internetowy konfigurator pozycji na rowerze. Autor: **MisieK**.
 
-**Autor: MisieK**
+## Funkcje
 
-## Najważniejsze funkcje
-
-- wybór roweru i pełna edycja geometrii,
-- import geometrii z adresu internetowego,
-- dobór ustawienia bazowego i automatyczna optymalizacja,
-- animacja pedałowania według kadencji,
-- Play, Pauza, Reset i regulacja prędkości animacji,
+- wejście przez imię lub pseudonim,
+- niezależna sesja dla każdej osoby korzystającej z linku,
+- wybór, import i ręczna edycja geometrii roweru,
+- dobór ustawienia bazowego,
+- optymalizacja pozycji,
+- animacja korby według kadencji,
 - kąty kolana, biodra, łokcia i tułowia,
-- wykres kąta kolana i biodra przez pełny obrót korby,
 - czytelne wymiary M1–M5,
 - kalkulator ciśnienia opon,
-- raport HTML i kopia profilu JSON,
-- obsługa wielu użytkowników przez jeden publiczny link,
-- zapis każdego profilu jako osobnego pliku JSON w prywatnym repozytorium GitHub.
-
-## Profile użytkowników
-
-Po otwarciu aplikacji użytkownik wpisuje:
-
-- imię lub pseudonim,
-- kod profilu o długości co najmniej 4 znaków.
-
-Ten sam pseudonim i kod wczytują poprzednio zapisany profil. Kod nie jest
-zapisywany w pliku profilu. Służy do utworzenia osobnego identyfikatora pliku.
-
-Zalecane jest oddzielne, prywatne repozytorium `bikefit-studio-data`.
-Szczegółowa instrukcja znajduje się w:
-
-```text
-KONFIGURACJA_PROFILI_GITHUB.txt
-```
-
-## Publikacja na Streamlit Community Cloud
-
-1. Wgraj zawartość folderu do repozytorium GitHub.
-2. W Streamlit Cloud ustaw:
-   - Repository: repozytorium aplikacji,
-   - Branch: `main`,
-   - Main file path: `app.py`.
-3. Kliknij Deploy.
-4. Skonfiguruj sekrety do zapisu profili.
-
-Przykład sekretów:
-
-```toml
-[github]
-token = "github_pat_..."
-owner = "MisieKroja02"
-repo = "bikefit-studio-data"
-branch = "main"
-folder = "profiles"
-```
-
-Prawdziwego tokenu nie wolno umieszczać w publicznym repozytorium.
-Dodaje się go w panelu Streamlit Cloud: Manage app → Settings → Secrets.
-
-## Uruchomienie lokalne
-
-```bash
-python -m pip install -r requirements.txt
-python -m streamlit run app.py
-```
-
-Na Windows można uruchomić `start_local.bat`.
-
-## Testy
-
-```bash
-python -m pytest -q
-```
-
-Silnik obliczeniowy przechodzi 6 testów.
+- raport oraz pobieranie profilu JSON.
 
 ## Ważne
 
-- aplikacja jest narzędziem orientacyjnym, a nie wyrobem medycznym,
-- regulacje na rzeczywistym rowerze należy wykonywać stopniowo,
-- ból, drętwienie, urazy i asymetrie wymagają konsultacji ze specjalistą,
-- ograniczenia producenta opony i obręczy mają pierwszeństwo przed kalkulatorem.
+Dane nie są zapisywane na GitHubie ani na stałe na serwerze. Każdy użytkownik pracuje w niezależnej sesji swojej przeglądarki. Profil można pobrać jako JSON w zakładce raportu.
+
+## Aktualizacja Streamlit
+
+Podmień `app.py` w głównym katalogu repozytorium, wykonaj commit i w razie potrzeby uruchom `Manage app → Reboot app`.

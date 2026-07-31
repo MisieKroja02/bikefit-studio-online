@@ -1,18 +1,10 @@
-BIKEFIT STUDIO ONLINE v1.7 — PUBLIKACJA
+WDROŻENIE BIKEFIT STUDIO ONLINE v1.9
 
-1. Wgraj całą zawartość paczki do repozytorium:
-   MisieKroja02/bikefit-studio-online
-2. Plik app.py musi znajdować się w katalogu głównym.
-3. W Streamlit Cloud wybierz repozytorium, gałąź main i plik app.py.
-4. Kliknij Deploy albo po aktualizacji użyj Manage app -> Reboot app.
+1. Wgraj całą zawartość paczki do publicznego repozytorium GitHub.
+2. W Streamlit Community Cloud wybierz repozytorium, gałąź main i plik app.py.
+3. Kliknij Deploy.
+4. Po aktualizacji app.py Streamlit wdroży zmianę automatycznie.
+5. Gdy widzisz starą wersję: Manage app -> Reboot app, następnie Ctrl+F5.
 
-Aby wiele osób mogło zapisywać własne profile:
-
-5. Utwórz osobne prywatne repozytorium bikefit-studio-data.
-6. Utwórz token GitHub z uprawnieniem Contents: Read and write wyłącznie
-   do tego prywatnego repozytorium.
-7. Dodaj token i ustawienia repozytorium w Streamlit Secrets.
-8. Szczegóły znajdują się w pliku KONFIGURACJA_PROFILI_GITHUB.txt.
-
-Po uruchomieniu linku każda osoba wpisuje pseudonim i kod profilu.
-Zapis jest wykonywany po kliknięciu przycisku „Zapisz mój profil na GitHubie”.
+Nie trzeba konfigurować tokenu ani Streamlit Secrets.
+Profile nie są zapisywane na GitHubie. Każdy użytkownik ma niezależną sesję przeglądarki i może pobrać kopię profilu JSON z zakładki „Raport”.
