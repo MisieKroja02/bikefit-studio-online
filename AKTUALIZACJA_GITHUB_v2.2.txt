@@ -1,0 +1,24 @@
+AKTUALIZACJA BIKEFIT STUDIO ONLINE v2.2
+
+Podmień na GitHubie dwa pliki:
+1. app.py
+2. .streamlit/config.toml
+
+Najprościej:
+- w repozytorium otwórz app.py, kliknij ołówek, wklej nową zawartość i wykonaj Commit changes,
+- otwórz folder .streamlit i podmień config.toml,
+- w Streamlit wybierz Manage app -> Reboot app,
+- odśwież stronę przez Ctrl+F5.
+
+NAPRAWY I NOWOŚCI:
+- przycisk sugerowanego rozkładu masy nie zmienia już aktywnego widżetu po jego utworzeniu,
+- korba obraca się zgodnie z ruchem wskazówek zegara w widoku z prawej strony,
+- animacja działa w przeglądarce przez requestAnimationFrame i jest płynniejsza,
+- animacja nie odświeża całej aplikacji, dlatego zakładki pozostają dostępne,
+- dodano osobną zakładkę Wykresy kątów,
+- tryb toolbarMode=viewer ukrywa opcje deweloperskie Streamlit.
+
+CZYSTY LINK DO WYSYŁANIA INNYM OSOBOM:
+https://bikefitstudio.streamlit.app/?embed=true&embed_options=dark_theme&embed_options=hide_loading_screen
+
+Parametr embed=true usuwa pasek narzędzi, ikonę GitHub, stopkę oraz elementy zarządzania aplikacją.

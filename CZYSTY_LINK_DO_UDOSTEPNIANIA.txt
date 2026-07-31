@@ -1,0 +1,5 @@
+Do innych osób wysyłaj ten link:
+
+https://bikefitstudio.streamlit.app/?embed=true&embed_options=dark_theme&embed_options=hide_loading_screen
+
+To wersja bez paska narzędzi Streamlit, ikony GitHub i okna zarządzania aplikacją.

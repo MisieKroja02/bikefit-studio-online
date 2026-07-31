@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from bikefit.internet_import import fetch_geometry
 from bikefit.kinematics import analyze_cycle, bike_points, calculate_pose
@@ -32,7 +33,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v2.1 — MisieK",
+    page_title="BikeFit Studio Online v2.2 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -131,7 +132,7 @@ li[role="option"]:hover, li[role="option"][aria-selected="true"] {background:#31
 [data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] label {color:#eaf4fc !important;}
 
 /* Zakładki muszą być widoczne na ciemnym tle. */
-[data-testid="stTabs"] button {color:#a9bed0 !important;opacity:1 !important;font-weight:650 !important;}
+[data-testid="stTabs"] button {color:#a9bed0 !important;opacity:1 !important;font-weight:650 !important;pointer-events:auto !important;cursor:pointer !important;}
 [data-testid="stTabs"] button:hover {color:#ffffff !important;}
 [data-testid="stTabs"] button[aria-selected="true"] {color:#ffffff !important;}
 [data-testid="stTabs"] [data-baseweb="tab-highlight"] {background:#67e4b5 !important;}
@@ -550,23 +551,54 @@ def reset_crank_animation() -> None:
 
 
 def display_phase_deg() -> float:
-    base_phase = float(st.session_state.get("phase", 270.0))
-    if not bool(st.session_state.get("animate_crank", False)):
-        st.session_state.animation_last_ts = None
-        st.session_state.animation_phase = base_phase
-        return base_phase
+    return float(st.session_state.get("phase", 270.0))
 
-    now = time.time()
-    current = float(st.session_state.get("animation_phase", base_phase))
-    last = st.session_state.get("animation_last_ts")
-    if last is None:
-        current = base_phase
-    else:
-        dt = max(0.0, min(0.5, now - float(last)))
-        current = (current + dt * float(st.session_state.get("cadence", 85.0)) * 6.0 * float(st.session_state.get("animation_speed", 1.0))) % 360.0
-    st.session_state.animation_phase = current
-    st.session_state.animation_last_ts = now
-    return current
+
+def set_suggested_front_load(bike_type: str, style: str) -> None:
+    st.session_state.front_load_percent = clamp_number(
+        suggested_front_load_percent(bike_type, style), 35.0, 50.0, 44.0
+    )
+
+
+def render_smooth_animation(
+    bike: BikeGeometry,
+    rider: Rider,
+    settings: FitSettings,
+    start_phase: float,
+    show_measurements: bool,
+    display_scale_percent: float,
+    show_angles: bool,
+) -> None:
+    """Płynna animacja wykonywana w przeglądarce, bez cyklicznych rerunów Streamlit."""
+    frame_count = 72
+    phases = [((start_phase - i * 360.0 / frame_count) % 360.0) for i in range(frame_count)]
+    frames = [
+        render_bike_svg(
+            bike, rider, settings, phase, show_measurements, display_scale_percent, show_angles
+        )
+        for phase in phases
+    ]
+    duration_ms = max(180.0, 60000.0 / max(1.0, float(settings.cadence)) / max(0.1, float(st.session_state.get("animation_speed", 1.0))))
+    html_doc = f"""
+    <!doctype html><html><head><meta charset='utf-8'>
+    <style>html,body{{margin:0;padding:0;background:transparent;overflow:hidden}}#stage{{width:100%;height:100%}}#stage svg{{display:block;width:100%;height:auto}}</style>
+    </head><body><div id='stage'></div>
+    <script>
+    const frames = {json.dumps(frames, ensure_ascii=False)};
+    const stage = document.getElementById('stage');
+    const duration = {duration_ms:.3f};
+    let lastIndex = -1;
+    const start = performance.now();
+    function tick(now) {{
+      const progress = ((now - start) % duration) / duration;
+      const index = Math.floor(progress * frames.length) % frames.length;
+      if (index !== lastIndex) {{ stage.innerHTML = frames[index]; lastIndex = index; }}
+      requestAnimationFrame(tick);
+    }}
+    requestAnimationFrame(tick);
+    </script></body></html>
+    """
+    components.html(html_doc, height=650, scrolling=False)
 
 
 def safe_import_url(url: str, fallback: BikeGeometry) -> tuple[BikeGeometry, list[str]]:
@@ -820,7 +852,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v2.1</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v2.2</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1005,7 +1037,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v2.1</h1>
+  <h1>BikeFit Studio Online v2.2</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1020,34 +1052,34 @@ with m3:
 with m4:
     st.markdown(f'<div class="metric-card"><div class="metric-label">Ciśnienie tył</div><div class="metric-value">{pressure.rear_bar:.2f} bar</div><div class="metric-note">{pressure.rear_psi:.0f} psi</div></div>', unsafe_allow_html=True)
 
-main_tab, config_tab, tire_tab, geometry_tab, import_tab, report_tab = st.tabs([
-    "Symulacja", "Wymiary i konfigurator", "Opony i ciśnienie", "Geometria roweru", "Import online", "Raport",
+main_tab, config_tab, tire_tab, geometry_tab, import_tab, angles_tab, report_tab = st.tabs([
+    "Symulacja", "Wymiary i konfigurator", "Opony i ciśnienie", "Geometria roweru", "Import online", "Wykresy kątów", "Raport",
 ])
 
 with main_tab:
-    def _render_simulation_block() -> None:
-        phase_to_draw = display_phase_deg()
+    if bool(st.session_state.animate_crank):
+        render_smooth_animation(
+            bike,
+            rider,
+            settings,
+            float(st.session_state.phase),
+            bool(st.session_state.show_measurements),
+            float(st.session_state.simulation_scale),
+            bool(st.session_state.show_angles),
+        )
+    else:
         st.markdown(
             render_bike_svg(
                 bike,
                 rider,
                 settings,
-                phase_to_draw,
+                float(st.session_state.phase),
                 bool(st.session_state.show_measurements),
                 float(st.session_state.simulation_scale),
                 bool(st.session_state.show_angles),
             ),
             unsafe_allow_html=True,
         )
-
-    if bool(st.session_state.animate_crank) and hasattr(st, "fragment"):
-        @st.fragment(run_every="250ms")
-        def live_simulation_fragment() -> None:
-            _render_simulation_block()
-
-        live_simulation_fragment()
-    else:
-        _render_simulation_block()
 
     cards = "".join(
         f'<div class="measure-card"><div class="measure-code" style="color:{color}">{code}</div><div class="measure-name">{name}</div><div class="measure-value">{value}</div></div>'
@@ -1061,38 +1093,7 @@ with main_tab:
     a3.info(f"**Łokieć:** {analysis.elbow_angle:.1f}°")
     a4.info(f"**Tułów:** {analysis.torso_angle:.1f}°")
 
-    with st.expander("📈 Wykres kątów przez pełny obrót korby", expanded=True):
-        angle_records = cycle_angle_records(bike, rider, settings)
-        st.vega_lite_chart(
-            {
-                "data": {"values": angle_records},
-                "mark": {"type": "line", "strokeWidth": 3, "interpolate": "monotone"},
-                "encoding": {
-                    "x": {"field": "Korba [°]", "type": "quantitative", "scale": {"domain": [0, 360]}, "title": "Pozycja korby [°]"},
-                    "y": {"field": "Kąt [°]", "type": "quantitative", "title": "Kąt stawu [°]"},
-                    "color": {
-                        "field": "Staw",
-                        "type": "nominal",
-                        "scale": {"domain": ["Kolano", "Biodro"], "range": ["#67e4b5", "#57d3ff"]},
-                    },
-                    "tooltip": [
-                        {"field": "Staw", "type": "nominal"},
-                        {"field": "Korba [°]", "type": "quantitative"},
-                        {"field": "Kąt [°]", "type": "quantitative"},
-                    ],
-                },
-                "height": 300,
-                "background": "#0c1a27",
-                "config": {
-                    "axis": {"labelColor": "#d9e7f2", "titleColor": "#d9e7f2", "gridColor": "#294158"},
-                    "legend": {"labelColor": "#d9e7f2", "titleColor": "#d9e7f2"},
-                    "view": {"stroke": "#36536b"},
-                },
-            },
-            use_container_width=True,
-        )
-
-    st.info("S75 oznacza środek siodła w miejscu, w którym siodło ma 75 mm szerokości. Na rysunku M1–M4 to główne wartości do ustawienia na realnym rowerze. Włącz animację, aby obserwować pełny ruch przy zadanej kadencji.")
+    st.info("S75 oznacza środek siodła w miejscu, w którym siodło ma 75 mm szerokości. Animacja działa płynnie w przeglądarce i obraca korbę zgodnie z ruchem wskazówek zegara w widoku z prawej strony roweru.")
 
 with config_tab:
     left, right = st.columns([1, 1])
@@ -1138,9 +1139,12 @@ with tire_tab:
     st.write(f"Zakres testowy przód: **{pressure.front_low:.2f}–{pressure.front_high:.2f} bar**")
     st.write(f"Zakres testowy tył: **{pressure.rear_low:.2f}–{pressure.rear_high:.2f} bar**")
     st.info(pressure.warning)
-    if st.button("Ustaw sugerowany rozkład masy"):
-        st.session_state.front_load_percent = suggested_front_load_percent(bike.bike_type, settings.style)
-        st.rerun()
+    st.button(
+        "Ustaw sugerowany rozkład masy",
+        on_click=set_suggested_front_load,
+        args=(bike.bike_type, settings.style),
+        use_container_width=True,
+    )
 
 with geometry_tab:
     st.subheader("Geometria aktywnego roweru")
@@ -1198,6 +1202,40 @@ with import_tab:
             except Exception as exc:
                 st.error(f"Import nie powiódł się: {exc}")
     st.caption("Niektóre strony blokują automatyczny odczyt. W takim przypadku przepisz wartości w zakładce geometrii.")
+
+
+with angles_tab:
+    st.subheader("Wykresy kątów przez pełny obrót korby")
+    angle_records = cycle_angle_records(bike, rider, settings)
+    st.vega_lite_chart(
+        {
+            "data": {"values": angle_records},
+            "mark": {"type": "line", "strokeWidth": 3, "interpolate": "monotone"},
+            "encoding": {
+                "x": {"field": "Korba [°]", "type": "quantitative", "scale": {"domain": [0, 360]}, "title": "Pozycja korby [°]"},
+                "y": {"field": "Kąt [°]", "type": "quantitative", "title": "Kąt stawu [°]"},
+                "color": {
+                    "field": "Staw",
+                    "type": "nominal",
+                    "scale": {"domain": ["Kolano", "Biodro"], "range": ["#67e4b5", "#57d3ff"]},
+                },
+                "tooltip": [
+                    {"field": "Staw", "type": "nominal"},
+                    {"field": "Korba [°]", "type": "quantitative"},
+                    {"field": "Kąt [°]", "type": "quantitative"},
+                ],
+            },
+            "height": 360,
+            "background": "#0c1a27",
+            "config": {
+                "axis": {"labelColor": "#d9e7f2", "titleColor": "#d9e7f2", "gridColor": "#294158"},
+                "legend": {"labelColor": "#d9e7f2", "titleColor": "#d9e7f2"},
+                "view": {"stroke": "#36536b"},
+            },
+        },
+        use_container_width=True,
+    )
+    st.caption("Wykres pokazuje, jak zmieniają się kąty kolana i biodra w całym obrocie korby.")
 
 with report_tab:
     st.subheader("Raport i kopia profilu")
