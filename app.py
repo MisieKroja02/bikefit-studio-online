@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import html
 import ipaddress
 import json
+import re
 import math
 import socket
 import time
+from datetime import datetime, timezone
 from dataclasses import replace
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlparse
+from urllib.request import Request, urlopen
 
 import streamlit as st
 
@@ -32,7 +38,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v1.6 — MisieK",
+    page_title="BikeFit Studio Online v1.7 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -306,6 +312,12 @@ def init_state() -> None:
         "show_angles": True,
         "animation_phase": 270.0,
         "animation_last_ts": None,
+        "animation_speed": 1.0,
+        "user_logged_in": False,
+        "user_alias": "",
+        "user_pin": "",
+        "profile_storage_status": "",
+        "profile_loaded_from_github": False,
         "fit_notes": [],
         "custom_bikes": [],
         "sidebar_import_url": "",
@@ -316,6 +328,216 @@ def init_state() -> None:
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
+
+
+def github_storage_config() -> dict[str, str] | None:
+    """Zwraca konfigurację prywatnego repozytorium danych ze Streamlit Secrets."""
+    try:
+        section = st.secrets["github"]
+        config = {
+            "token": str(section["token"]),
+            "owner": str(section["owner"]),
+            "repo": str(section["repo"]),
+            "branch": str(section.get("branch", "main")),
+            "folder": str(section.get("folder", "profiles")).strip("/"),
+        }
+        if not all(config.values()):
+            return None
+        return config
+    except Exception:
+        return None
+
+
+def profile_storage_key(alias: str, pin: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", alias.casefold()).strip("-")[:36] or "profil"
+    digest = hashlib.sha256(f"{alias.casefold()}|{pin}".encode("utf-8")).hexdigest()[:12]
+    return f"{slug}-{digest}"
+
+
+def github_api_request(method: str, api_url: str, token: str, payload: dict | None = None) -> dict:
+    body = None if payload is None else json.dumps(payload).encode("utf-8")
+    request = Request(
+        api_url,
+        data=body,
+        method=method,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "BikeFit-Studio-Online",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            raw = response.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        if exc.code == 404:
+            raise FileNotFoundError("Profil nie istnieje.") from exc
+        raise RuntimeError(f"GitHub API HTTP {exc.code}: {detail[:300]}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Brak połączenia z GitHubem: {exc.reason}") from exc
+
+
+def github_profile_path(alias: str, pin: str, config: dict[str, str]) -> str:
+    return f"{config['folder']}/{profile_storage_key(alias, pin)}.json"
+
+
+def github_load_profile(alias: str, pin: str) -> dict | None:
+    config = github_storage_config()
+    if config is None:
+        return None
+    path = github_profile_path(alias, pin, config)
+    encoded_path = quote(path, safe="/")
+    url = (
+        f"https://api.github.com/repos/{quote(config['owner'])}/{quote(config['repo'])}"
+        f"/contents/{encoded_path}?ref={quote(config['branch'])}"
+    )
+    try:
+        result = github_api_request("GET", url, config["token"])
+    except FileNotFoundError:
+        return None
+    content = str(result.get("content", "")).replace("\n", "")
+    if not content:
+        return None
+    return json.loads(base64.b64decode(content).decode("utf-8"))
+
+
+def build_profile_payload(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> dict:
+    return {
+        "schema_version": 1,
+        "saved_at_utc": datetime.now(timezone.utc).isoformat(),
+        "alias": str(st.session_state.user_alias),
+        "bike": bike.to_dict(),
+        "rider": rider.to_dict(),
+        "settings": settings.to_dict(),
+        "ui": {
+            "phase": float(st.session_state.phase),
+            "simulation_scale": float(st.session_state.simulation_scale),
+            "show_measurements": bool(st.session_state.show_measurements),
+            "show_angles": bool(st.session_state.show_angles),
+            "animation_speed": float(st.session_state.animation_speed),
+        },
+        "custom_bikes": list(st.session_state.custom_bikes),
+        "fit_notes": list(st.session_state.fit_notes),
+    }
+
+
+def github_save_profile(alias: str, pin: str, payload: dict) -> str:
+    config = github_storage_config()
+    if config is None:
+        raise RuntimeError("Zapis GitHub nie jest jeszcze skonfigurowany w Streamlit Secrets.")
+    path = github_profile_path(alias, pin, config)
+    encoded_path = quote(path, safe="/")
+    url = (
+        f"https://api.github.com/repos/{quote(config['owner'])}/{quote(config['repo'])}"
+        f"/contents/{encoded_path}"
+    )
+    sha = None
+    try:
+        existing = github_api_request(
+            "GET",
+            f"{url}?ref={quote(config['branch'])}",
+            config["token"],
+        )
+        sha = existing.get("sha")
+    except FileNotFoundError:
+        sha = None
+
+    request_payload = {
+        "message": f"Zapis profilu BikeFit: {alias}",
+        "content": base64.b64encode(
+            json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        ).decode("ascii"),
+        "branch": config["branch"],
+    }
+    if sha:
+        request_payload["sha"] = sha
+    github_api_request("PUT", url, config["token"], request_payload)
+    return path
+
+
+def apply_profile_payload(payload: dict) -> None:
+    rider_data = payload.get("rider", {})
+    settings_data = payload.get("settings", {})
+    ui_data = payload.get("ui", {})
+    bike_data = payload.get("bike", {})
+
+    rider = Rider.from_dict(rider_data)
+    settings = FitSettings.from_dict(settings_data)
+    st.session_state.profile_name = rider.name
+    st.session_state.height = float(rider.height)
+    st.session_state.inseam = float(rider.inseam)
+    st.session_state.weight = float(rider.weight)
+    st.session_state.flexibility = str(rider.flexibility)
+    for key in SETTINGS_KEYS:
+        if hasattr(settings, key):
+            st.session_state[key] = getattr(settings, key)
+
+    st.session_state.phase = float(ui_data.get("phase", 270.0))
+    st.session_state.animation_phase = st.session_state.phase
+    st.session_state.simulation_scale = float(ui_data.get("simulation_scale", 82.0))
+    st.session_state.show_measurements = bool(ui_data.get("show_measurements", True))
+    st.session_state.show_angles = bool(ui_data.get("show_angles", True))
+    st.session_state.animation_speed = float(ui_data.get("animation_speed", 1.0))
+    st.session_state.custom_bikes = list(payload.get("custom_bikes", []))
+    st.session_state.fit_notes = list(payload.get("fit_notes", []))
+
+    if bike_data:
+        saved_bike = BikeGeometry.from_dict(bike_data)
+        st.session_state.custom_bikes = [
+            item for item in st.session_state.custom_bikes if item.get("name") != saved_bike.name
+        ] + [saved_bike.to_dict()]
+        st.session_state.selected_bike = saved_bike.name
+        st.session_state.geometry_for = None
+
+
+def profile_login_gate() -> None:
+    if bool(st.session_state.user_logged_in):
+        return
+
+    left, center, right = st.columns([1, 1.4, 1])
+    with center:
+        if LOGO_FILE.exists():
+            st.image(str(LOGO_FILE), width=120)
+        st.markdown("## BikeFit Studio Online")
+        st.write("Wpisz imię lub pseudonim. Ten sam pseudonim i kod otworzą później zapisany profil.")
+        alias = st.text_input("Imię lub pseudonim", key="login_alias", max_chars=40)
+        pin = st.text_input(
+            "Kod profilu (minimum 4 znaki)",
+            key="login_pin",
+            type="password",
+            max_chars=20,
+            help="Kod rozróżnia osoby o takim samym pseudonimie i ogranicza przypadkowe otwarcie cudzego profilu.",
+        )
+        if github_storage_config() is None:
+            st.warning("Aplikacja działa, ale zapis na GitHubie nie jest jeszcze skonfigurowany przez właściciela.")
+        if st.button("Wejdź do konfiguratora", type="primary", use_container_width=True):
+            clean_alias = alias.strip()
+            if len(clean_alias) < 2:
+                st.error("Wpisz imię lub pseudonim składający się z co najmniej 2 znaków.")
+            elif len(pin) < 4:
+                st.error("Kod profilu musi mieć co najmniej 4 znaki.")
+            else:
+                st.session_state.user_alias = clean_alias
+                st.session_state.user_pin = pin
+                st.session_state.user_logged_in = True
+                st.session_state.profile_name = clean_alias
+                try:
+                    saved = github_load_profile(clean_alias, pin)
+                    if saved:
+                        apply_profile_payload(saved)
+                        st.session_state.profile_loaded_from_github = True
+                        st.session_state.profile_storage_status = "Wczytano zapisany profil z GitHuba."
+                    else:
+                        st.session_state.profile_storage_status = "Utworzono nowy profil."
+                except Exception as exc:
+                    st.session_state.profile_storage_status = f"Nie udało się wczytać profilu: {exc}"
+                st.rerun()
+        st.caption("Nie używaj hasła do banku, poczty ani innych usług. To wyłącznie kod profilu BikeFit.")
+    st.stop()
 
 
 def current_settings() -> FitSettings:
@@ -410,6 +632,25 @@ def apply_pending_state() -> None:
         st.session_state.fit_notes = list(notes)
         st.session_state.pending_fit_notes = None
 
+def start_crank_animation() -> None:
+    st.session_state.animate_crank = True
+    st.session_state.animation_phase = float(st.session_state.get("phase", 270.0))
+    st.session_state.animation_last_ts = None
+
+
+def pause_crank_animation() -> None:
+    st.session_state.animate_crank = False
+    st.session_state.phase = float(st.session_state.get("animation_phase", st.session_state.get("phase", 270.0)))
+    st.session_state.animation_last_ts = None
+
+
+def reset_crank_animation() -> None:
+    st.session_state.animate_crank = False
+    st.session_state.phase = 270.0
+    st.session_state.animation_phase = 270.0
+    st.session_state.animation_last_ts = None
+
+
 def display_phase_deg() -> float:
     base_phase = float(st.session_state.get("phase", 270.0))
     if not bool(st.session_state.get("animate_crank", False)):
@@ -424,7 +665,7 @@ def display_phase_deg() -> float:
         current = base_phase
     else:
         dt = max(0.0, min(0.5, now - float(last)))
-        current = (current + dt * float(st.session_state.get("cadence", 85.0)) * 6.0) % 360.0
+        current = (current + dt * float(st.session_state.get("cadence", 85.0)) * 6.0 * float(st.session_state.get("animation_speed", 1.0))) % 360.0
     st.session_state.animation_phase = current
     st.session_state.animation_last_ts = now
     return current
@@ -663,6 +904,17 @@ def measurement_values(bike: BikeGeometry, settings: FitSettings) -> list[tuple[
     ]
 
 
+def cycle_angle_records(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> list[dict[str, float | str]]:
+    records: list[dict[str, float | str]] = []
+    for crank_angle in range(0, 361, 5):
+        pose = calculate_pose(bike, rider, settings, float(crank_angle % 360))
+        if pose.knee_flexion is not None:
+            records.append({"Korba [°]": crank_angle, "Kąt [°]": round(pose.knee_flexion, 2), "Staw": "Kolano"})
+        if pose.hip_angle is not None:
+            records.append({"Korba [°]": crank_angle, "Kąt [°]": round(pose.hip_angle, 2), "Staw": "Biodro"})
+    return records
+
+
 def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     analysis = analyze_cycle(bike, rider, settings, samples=72)
     pressure = calculate_tire_pressure(rider, bike, settings)
@@ -670,7 +922,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v1.6</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v1.7</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -682,6 +934,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
 
 init_state()
 apply_pending_state()
+profile_login_gate()
 
 # Sidebar branding.
 with st.sidebar:
@@ -689,6 +942,9 @@ with st.sidebar:
         st.image(str(LOGO_FILE), width=105)
     st.markdown("### BikeFit Studio Online")
     st.caption("Autor: **MisieK**")
+    st.success(f"Profil: {st.session_state.user_alias}")
+    if st.session_state.profile_storage_status:
+        st.caption(st.session_state.profile_storage_status)
     st.markdown("---")
 
     catalog = bike_catalog()
@@ -774,6 +1030,41 @@ with st.sidebar:
     st.selectbox("Charakter pozycji", ["Komfortowa", "Zrównoważona", "Sportowa"], key="style")
 
     rider = current_rider()
+
+    with st.expander("💾 Mój profil i zapis", expanded=True):
+        profile_payload = build_profile_payload(bike, rider, current_settings())
+        storage_ready = github_storage_config() is not None
+        if st.button(
+            "Zapisz mój profil na GitHubie",
+            key="save_user_profile",
+            use_container_width=True,
+            type="primary",
+            disabled=not storage_ready,
+        ):
+            try:
+                saved_path = github_save_profile(
+                    str(st.session_state.user_alias),
+                    str(st.session_state.user_pin),
+                    build_profile_payload(bike, current_rider(), current_settings()),
+                )
+                st.session_state.profile_storage_status = f"Zapisano profil: {saved_path}"
+                st.success("Profil został zapisany. Przy następnym wejściu użyj tego samego pseudonimu i kodu.")
+            except Exception as exc:
+                st.error(f"Nie udało się zapisać profilu: {exc}")
+        if not storage_ready:
+            st.caption("Właściciel aplikacji musi dodać token i repozytorium w Streamlit Secrets.")
+        st.download_button(
+            "Pobierz kopię profilu JSON",
+            data=json.dumps(profile_payload, ensure_ascii=False, indent=2),
+            file_name=f"bikefit_{profile_storage_key(str(st.session_state.user_alias), str(st.session_state.user_pin))}.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+        if st.button("Wyloguj / zmień użytkownika", key="logout_profile", use_container_width=True):
+            for session_key in list(st.session_state.keys()):
+                del st.session_state[session_key]
+            st.rerun()
+
     if st.button("Dobierz ustawienie bazowe", use_container_width=True, type="primary"):
         rec = recommend_and_evaluate(rider, bike, st.session_state.style, st.session_state.flexibility)
         queue_settings(rec.settings, rec.notes)
@@ -792,8 +1083,13 @@ with st.sidebar:
     st.slider("Zmiana zasięgu kierownicy [mm]", -80.0, 80.0, key="handlebar_reach_delta", step=1.0)
     st.slider("Kadencja [rpm]", 40.0, 130.0, key="cadence", step=1.0)
     st.slider("Kąt stopy [°]", -20.0, 15.0, key="foot_angle", step=1.0)
-    st.slider("Pozycja korby [°]", 0.0, 359.0, key="phase", step=1.0)
-    st.checkbox("Animacja korby wg kadencji", key="animate_crank", help="Po włączeniu korba obraca się automatycznie z prędkością wynikającą z kadencji.")
+    st.slider("Pozycja korby [°]", 0.0, 359.0, key="phase", step=1.0, disabled=bool(st.session_state.animate_crank))
+    play_col, pause_col, reset_col = st.columns(3)
+    play_col.button("▶ Play", key="anim_play", use_container_width=True, on_click=start_crank_animation)
+    pause_col.button("⏸ Pauza", key="anim_pause", use_container_width=True, on_click=pause_crank_animation)
+    reset_col.button("↺ Reset", key="anim_reset", use_container_width=True, on_click=reset_crank_animation)
+    st.slider("Prędkość animacji [×]", 0.25, 2.0, key="animation_speed", step=0.25)
+    st.caption("Animacja działa zgodnie z kadencją × ustawiony mnożnik prędkości.")
     st.checkbox("Pokaż kąty na rysunku", key="show_angles")
     st.slider("Skala symulacji [%]", 65.0, 100.0, key="simulation_scale", step=1.0, help="Zmniejsz, aby cały rower i rowerzysta mieścili się wygodniej na ekranie.")
     st.checkbox("Pokaż wymiary M1–M5", key="show_measurements")
@@ -805,7 +1101,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v1.6</h1>
+  <h1>BikeFit Studio Online v1.7</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -860,6 +1156,37 @@ with main_tab:
     a2.info(f"**Biodro:** {analysis.hip_angle_min:.1f}–{analysis.hip_angle_max:.1f}°")
     a3.info(f"**Łokieć:** {analysis.elbow_angle:.1f}°")
     a4.info(f"**Tułów:** {analysis.torso_angle:.1f}°")
+
+    with st.expander("📈 Wykres kątów przez pełny obrót korby", expanded=True):
+        angle_records = cycle_angle_records(bike, rider, settings)
+        st.vega_lite_chart(
+            {
+                "data": {"values": angle_records},
+                "mark": {"type": "line", "strokeWidth": 3, "interpolate": "monotone"},
+                "encoding": {
+                    "x": {"field": "Korba [°]", "type": "quantitative", "scale": {"domain": [0, 360]}, "title": "Pozycja korby [°]"},
+                    "y": {"field": "Kąt [°]", "type": "quantitative", "title": "Kąt stawu [°]"},
+                    "color": {
+                        "field": "Staw",
+                        "type": "nominal",
+                        "scale": {"domain": ["Kolano", "Biodro"], "range": ["#67e4b5", "#57d3ff"]},
+                    },
+                    "tooltip": [
+                        {"field": "Staw", "type": "nominal"},
+                        {"field": "Korba [°]", "type": "quantitative"},
+                        {"field": "Kąt [°]", "type": "quantitative"},
+                    ],
+                },
+                "height": 300,
+                "background": "#0c1a27",
+                "config": {
+                    "axis": {"labelColor": "#d9e7f2", "titleColor": "#d9e7f2", "gridColor": "#294158"},
+                    "legend": {"labelColor": "#d9e7f2", "titleColor": "#d9e7f2"},
+                    "view": {"stroke": "#36536b"},
+                },
+            },
+            use_container_width=True,
+        )
 
     st.info("S75 oznacza środek siodła w miejscu, w którym siodło ma 75 mm szerokości. Na rysunku M1–M4 to główne wartości do ustawienia na realnym rowerze. Włącz animację, aby obserwować pełny ruch przy zadanej kadencji.")
 

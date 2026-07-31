@@ -1,0 +1,18 @@
+AKTUALIZACJA BIKEFIT STUDIO ONLINE DO v1.7
+
+1. Podmień plik app.py w repozytorium bikefit-studio-online.
+2. Dodaj plik .streamlit/secrets.example.toml.
+3. Commit changes.
+4. W Streamlit użyj Manage app -> Reboot app.
+5. Skonfiguruj osobne prywatne repozytorium danych zgodnie z plikiem
+   KONFIGURACJA_PROFILI_GITHUB.txt.
+
+Nowości:
+- ekran wejścia z imieniem lub pseudonimem i kodem profilu,
+- wiele niezależnych osób korzystających z jednego linku,
+- zapis i automatyczne wczytywanie profili z prywatnego repozytorium GitHub,
+- osobny plik JSON dla każdego profilu,
+- Play / Pauza / Reset animacji,
+- mnożnik prędkości animacji,
+- wykres kąta kolana i biodra przez pełny obrót korby,
+- pobieranie zapasowej kopii profilu JSON.
