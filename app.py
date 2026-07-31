@@ -85,10 +85,49 @@ CSS = """
 .measure-value {color:#f8fbff;font-size:1.1rem;font-weight:800;margin-top:5px;}
 .footer-note {text-align:center;color:#8399ab;font-size:.78rem;margin-top:28px;}
 div[data-baseweb="select"] > div {background:#162838 !important;color:#f5fbff !important;border-color:#3c5b73 !important;}
+div[data-baseweb="select"] input {color:#f5fbff !important;-webkit-text-fill-color:#f5fbff !important;}
 div[data-baseweb="popover"] {color:#f5fbff !important;}
 ul[role="listbox"] {background:#162838 !important;}
 li[role="option"] {color:#f5fbff !important;background:#162838 !important;}
-li[role="option"]:hover {background:#315272 !important;}
+li[role="option"]:hover, li[role="option"][aria-selected="true"] {background:#315272 !important;color:#ffffff !important;}
+
+/* Czytelne pola tekstowe i liczbowe w całej aplikacji. */
+[data-testid="stTextInput"] div[data-baseweb="input"],
+[data-testid="stNumberInput"] div[data-baseweb="input"],
+[data-testid="stTextArea"] div[data-baseweb="textarea"] {
+  background:#162838 !important;
+  border-color:#3c5b73 !important;
+}
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stTextArea"] textarea {
+  background:#162838 !important;
+  color:#f7fbff !important;
+  -webkit-text-fill-color:#f7fbff !important;
+  caret-color:#ffffff !important;
+  opacity:1 !important;
+}
+[data-testid="stTextInput"] input::placeholder,
+[data-testid="stNumberInput"] input::placeholder,
+[data-testid="stTextArea"] textarea::placeholder {
+  color:#91a8bb !important;
+  -webkit-text-fill-color:#91a8bb !important;
+  opacity:1 !important;
+}
+[data-testid="stNumberInput"] button {
+  background:#253d52 !important;
+  color:#ffffff !important;
+  border-color:#3c5b73 !important;
+}
+[data-testid="stNumberInput"] button svg {fill:#ffffff !important;color:#ffffff !important;}
+[data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] label {color:#eaf4fc !important;}
+
+/* Zakładki muszą być widoczne na ciemnym tle. */
+[data-testid="stTabs"] button {color:#a9bed0 !important;opacity:1 !important;font-weight:650 !important;}
+[data-testid="stTabs"] button:hover {color:#ffffff !important;}
+[data-testid="stTabs"] button[aria-selected="true"] {color:#ffffff !important;}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {background:#67e4b5 !important;}
+
 [data-testid="stMetricValue"] {color:#f6fbff;}
 [data-testid="stMetricLabel"] {color:#a9bed0;}
 .stButton > button, .stDownloadButton > button {border-radius:12px;font-weight:700;}
@@ -103,6 +142,26 @@ st.markdown(CSS, unsafe_allow_html=True)
 def load_bikes() -> list[BikeGeometry]:
     payload = json.loads(BIKES_FILE.read_text(encoding="utf-8"))
     return [BikeGeometry.from_dict(item) for item in payload]
+
+
+GEOMETRY_FIELDS = [
+    ("Stack [mm]", "stack", 0.5),
+    ("Reach [mm]", "reach", 0.5),
+    ("Kąt rury podsiodłowej [°]", "seat_tube_angle", 0.1),
+    ("Kąt główki [°]", "head_tube_angle", 0.1),
+    ("Długość główki [mm]", "head_tube_length", 0.5),
+    ("Rura podsiodłowa [mm]", "seat_tube_length", 0.5),
+    ("Efektywna rura górna [mm]", "top_tube", 0.5),
+    ("BB drop [mm]", "bb_drop", 0.5),
+    ("Chainstay [mm]", "chainstay", 0.5),
+    ("Rozstaw osi [mm]", "wheelbase", 0.5),
+    ("Offset widelca [mm]", "fork_offset", 0.5),
+    ("Promień koła z oponą [mm]", "wheel_radius", 0.5),
+    ("Długość mostka [mm]", "stem_length", 0.5),
+    ("Kąt mostka [°]", "stem_angle", 0.5),
+    ("Zasięg do chwytu [mm]", "hood_reach", 0.5),
+    ("Długość korby [mm]", "crank_length", 0.5),
+]
 
 
 def init_state() -> None:
@@ -414,12 +473,34 @@ with st.sidebar:
 
     catalog = bike_catalog()
     names = [b.name for b in catalog]
-    current_name = st.selectbox("Rower", names, index=names.index(st.session_state.get("selected_bike", names[0])) if st.session_state.get("selected_bike") in names else 0)
+    current_name = st.selectbox(
+        "Wybierz rower / geometrię",
+        names,
+        index=names.index(st.session_state.get("selected_bike", names[0])) if st.session_state.get("selected_bike") in names else 0,
+        help="Wybierz geometrię z bazy. Własne wymiary możesz wpisać poniżej.",
+    )
     st.session_state.selected_bike = current_name
     base_bike = next(b for b in catalog if b.name == current_name)
     if st.session_state.get("geometry_for") != current_name:
         reset_geometry_state(base_bike)
         st.session_state.geometry_for = current_name
+
+    with st.expander("📐 Geometria roweru — wybierz i edytuj", expanded=True):
+        st.caption("Zmiany działają od razu w symulacji. Po zapisaniu geometria pojawi się na liście wyboru w tej sesji.")
+        st.text_input("Nazwa geometrii", key="geo_name")
+        st.selectbox("Typ roweru", ["Gravel", "Road", "MTB", "Trekking", "City", "TT"], key="geo_type")
+        quick_cols = st.columns(2)
+        for i, (label_text, field, step) in enumerate(GEOMETRY_FIELDS):
+            quick_cols[i % 2].number_input(label_text, key=f"geo_{field}", step=step, format="%.1f")
+        if st.button("Zapisz jako własną geometrię", key="save_geometry_sidebar", use_container_width=True, type="primary"):
+            edited = geometry_from_state(base_bike)
+            payload = edited.to_dict()
+            st.session_state.custom_bikes = [p for p in st.session_state.custom_bikes if p.get("name") != edited.name] + [payload]
+            st.session_state.selected_bike = edited.name
+            st.session_state.geometry_for = edited.name
+            st.success("Geometria została zapisana w bieżącej sesji i dodana do listy.")
+            st.rerun()
+
     bike = geometry_from_state(base_bike)
 
     st.markdown("#### Rowerzysta")
@@ -541,28 +622,31 @@ with tire_tab:
 
 with geometry_tab:
     st.subheader("Geometria aktywnego roweru")
-    a, b = st.columns(2)
-    a.text_input("Nazwa", key="geo_name")
-    b.selectbox("Typ roweru", ["Gravel", "Road", "MTB", "Trekking", "City", "TT"], key="geo_type")
-    fields = [
-        ("Stack [mm]", "stack"), ("Reach [mm]", "reach"),
-        ("Kąt rury podsiodłowej [°]", "seat_tube_angle"), ("Kąt główki [°]", "head_tube_angle"),
-        ("Długość główki [mm]", "head_tube_length"), ("Rura podsiodłowa [mm]", "seat_tube_length"),
-        ("Efektywna rura górna [mm]", "top_tube"), ("BB drop [mm]", "bb_drop"),
-        ("Chainstay [mm]", "chainstay"), ("Rozstaw osi [mm]", "wheelbase"),
-        ("Offset widelca [mm]", "fork_offset"), ("Promień koła z oponą [mm]", "wheel_radius"),
-        ("Długość mostka [mm]", "stem_length"), ("Kąt mostka [°]", "stem_angle"),
-        ("Zasięg do chwytu [mm]", "hood_reach"), ("Długość korby [mm]", "crank_length"),
-    ]
-    cols = st.columns(2)
-    for i, (label_text, field) in enumerate(fields):
-        cols[i % 2].number_input(label_text, key=f"geo_{field}", step=0.5)
-    bike = geometry_from_state(base_bike)
-    if st.button("Dodaj tę geometrię do bieżącej sesji", type="primary"):
-        payload = bike.to_dict()
-        st.session_state.custom_bikes = [p for p in st.session_state.custom_bikes if p.get("name") != bike.name] + [payload]
-        st.session_state.selected_bike = bike.name
-        st.success("Geometria została dodana do listy w tej sesji.")
+    st.info("Pełny wybór i edycja geometrii znajduje się teraz w panelu po lewej: **📐 Geometria roweru — wybierz i edytuj**. Zmiany są widoczne w symulacji natychmiast.")
+    active_geometry = geometry_from_state(base_bike)
+    g1, g2, g3, g4 = st.columns(4)
+    g1.metric("Stack", f"{active_geometry.stack:.1f} mm")
+    g2.metric("Reach", f"{active_geometry.reach:.1f} mm")
+    g3.metric("Kąt rury podsiodłowej", f"{active_geometry.seat_tube_angle:.1f}°")
+    g4.metric("Rozstaw osi", f"{active_geometry.wheelbase:.1f} mm")
+
+    st.markdown("#### Wszystkie aktywne wymiary")
+    table_rows = "".join(
+        f"<tr><td style='padding:7px 10px;border-bottom:1px solid #2d4357'>{html.escape(label_text)}</td><td style='padding:7px 10px;border-bottom:1px solid #2d4357'><b>{getattr(active_geometry, field):.1f}</b></td></tr>"
+        for label_text, field, _step in GEOMETRY_FIELDS
+    )
+    st.markdown(
+        f'<div class="info-card"><table style="width:100%;border-collapse:collapse;color:#eef7ff">{table_rows}</table></div>',
+        unsafe_allow_html=True,
+    )
+    profile_json = json.dumps(active_geometry.to_dict(), ensure_ascii=False, indent=2)
+    st.download_button(
+        "Pobierz geometrię JSON",
+        data=profile_json,
+        file_name="geometria_roweru.json",
+        mime="application/json",
+        use_container_width=True,
+    )
 
 with import_tab:
     st.subheader("Import geometrii z internetu")
