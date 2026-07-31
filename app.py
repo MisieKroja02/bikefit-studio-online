@@ -31,7 +31,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online — MisieK",
+    page_title="BikeFit Studio Online v1.2 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -130,6 +130,69 @@ li[role="option"]:hover, li[role="option"][aria-selected="true"] {background:#31
 
 [data-testid="stMetricValue"] {color:#f6fbff;}
 [data-testid="stMetricLabel"] {color:#a9bed0;}
+
+/* Natywne widżety w panelu bocznym — bez białego tekstu na białym tle. */
+[data-testid="stSidebar"] [data-baseweb="input"],
+[data-testid="stSidebar"] [data-baseweb="textarea"],
+[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+  background-color:#112435 !important;
+  border-color:#3d607a !important;
+  color:#f7fbff !important;
+}
+[data-testid="stSidebar"] input,
+[data-testid="stSidebar"] textarea {
+  background-color:#112435 !important;
+  color:#f7fbff !important;
+  -webkit-text-fill-color:#f7fbff !important;
+  caret-color:#ffffff !important;
+  opacity:1 !important;
+}
+[data-testid="stSidebar"] input::placeholder,
+[data-testid="stSidebar"] textarea::placeholder {
+  color:#8fa9bd !important;
+  -webkit-text-fill-color:#8fa9bd !important;
+  opacity:1 !important;
+}
+[data-testid="stSidebar"] [data-testid="stNumberInput"] button {
+  background:#27455e !important;
+  color:#ffffff !important;
+  border-color:#416681 !important;
+}
+[data-testid="stSidebar"] [data-testid="stNumberInput"] button svg {
+  fill:#ffffff !important; color:#ffffff !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] details {
+  background:#0d1b28 !important;
+  border:1px solid #385870 !important;
+  border-radius:12px !important;
+  overflow:hidden !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+  background:#173047 !important;
+  color:#ffffff !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
+  background:#21415d !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary p,
+[data-testid="stSidebar"] [data-testid="stExpander"] summary span,
+[data-testid="stSidebar"] [data-testid="stExpander"] summary svg,
+[data-testid="stSidebar"] [data-testid="stExpander"] label,
+[data-testid="stSidebar"] [data-testid="stExpander"] p {
+  color:#f5fbff !important;
+}
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+  color:#a7bed1 !important;
+}
+[data-testid="stSidebar"] .stButton > button,
+[data-testid="stSidebar"] .stDownloadButton > button,
+[data-testid="stSidebar"] [data-testid="stLinkButton"] a {
+  color:#ffffff !important;
+  border-color:#466985 !important;
+}
+[data-testid="stSidebar"] [data-testid="stAlert"] {
+  color:#f7fbff !important;
+}
 .stButton > button, .stDownloadButton > button {border-radius:12px;font-weight:700;}
 @media (max-width: 900px) {.measure-grid{grid-template-columns:1fr 1fr}.hero h1{font-size:1.55rem}}
 </style>
@@ -188,6 +251,9 @@ def init_state() -> None:
         "show_measurements": True,
         "fit_notes": [],
         "custom_bikes": [],
+        "sidebar_import_url": "",
+        "sidebar_import_status": "",
+        "sidebar_import_notes": [],
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -451,7 +517,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v1.2</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -485,7 +551,47 @@ with st.sidebar:
         reset_geometry_state(base_bike)
         st.session_state.geometry_for = current_name
 
-    with st.expander("📐 Geometria roweru — wybierz i edytuj", expanded=True):
+    with st.expander("🌐 Import geometrii z linku", expanded=True):
+        st.caption("Tak jak w wersji desktopowej: otwórz katalog, wybierz dokładny model, rocznik i rozmiar, a potem wklej adres strony roweru.")
+        st.link_button("Otwórz Bike Insights", "https://bikeinsights.com/search", use_container_width=True)
+        st.link_button("Otwórz Geometry Geeks", "https://geometrygeeks.bike/", use_container_width=True)
+        st.link_button("Otwórz 99 Spokes", "https://99spokes.com/", use_container_width=True)
+        st.text_input(
+            "Adres konkretnego modelu i rozmiaru",
+            key="sidebar_import_url",
+            placeholder="https://...",
+            help="Wklej adres strony zawierającej tabelę geometrii konkretnego rozmiaru ramy.",
+        )
+        if st.button("Pobierz i zastosuj geometrię", key="import_geometry_sidebar", use_container_width=True, type="primary"):
+            import_url = str(st.session_state.sidebar_import_url).strip()
+            if not import_url:
+                st.session_state.sidebar_import_status = "Wklej najpierw adres strony z geometrią."
+                st.session_state.sidebar_import_notes = []
+            else:
+                try:
+                    with st.spinner("Pobieram stronę i rozpoznaję geometrię…"):
+                        imported, notes = safe_import_url(import_url, geometry_from_state(base_bike))
+                    st.session_state.custom_bikes = [
+                        item for item in st.session_state.custom_bikes if item.get("name") != imported.name
+                    ] + [imported.to_dict()]
+                    st.session_state.selected_bike = imported.name
+                    reset_geometry_state(imported)
+                    st.session_state.geometry_for = imported.name
+                    st.session_state.sidebar_import_status = f"Zaimportowano: {imported.name}"
+                    st.session_state.sidebar_import_notes = notes
+                    st.rerun()
+                except Exception as exc:
+                    st.session_state.sidebar_import_status = f"Import nie powiódł się: {exc}"
+                    st.session_state.sidebar_import_notes = []
+        if st.session_state.sidebar_import_status:
+            if st.session_state.sidebar_import_status.startswith("Zaimportowano"):
+                st.success(st.session_state.sidebar_import_status)
+            else:
+                st.warning(st.session_state.sidebar_import_status)
+        for import_note in st.session_state.sidebar_import_notes:
+            st.caption(f"• {import_note}")
+
+    with st.expander("📐 Ręczna edycja geometrii", expanded=False):
         st.caption("Zmiany działają od razu w symulacji. Po zapisaniu geometria pojawi się na liście wyboru w tej sesji.")
         st.text_input("Nazwa geometrii", key="geo_name")
         st.selectbox("Typ roweru", ["Gravel", "Road", "MTB", "Trekking", "City", "TT"], key="geo_type")
@@ -622,7 +728,7 @@ with tire_tab:
 
 with geometry_tab:
     st.subheader("Geometria aktywnego roweru")
-    st.info("Pełny wybór i edycja geometrii znajduje się teraz w panelu po lewej: **📐 Geometria roweru — wybierz i edytuj**. Zmiany są widoczne w symulacji natychmiast.")
+    st.info("Import z linku i ręczna edycja geometrii znajdują się w panelu po lewej: **🌐 Import geometrii z linku** oraz **📐 Ręczna edycja geometrii**. Zmiany są widoczne w symulacji natychmiast.")
     active_geometry = geometry_from_state(base_bike)
     g1, g2, g3, g4 = st.columns(4)
     g1.metric("Stack", f"{active_geometry.stack:.1f} mm")
