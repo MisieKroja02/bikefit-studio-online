@@ -33,7 +33,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v2.5 — MisieK",
+    page_title="BikeFit Studio Online v2.6 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -620,9 +620,9 @@ def render_smooth_animation(
     display_scale_percent: float,
     show_angles: bool,
 ) -> None:
-    """Płynna animacja w przeglądarce z lokalnym sterowaniem kadencją."""
-    frame_count = 84
-    # Malejący kąt oznacza obrót zgodny z ruchem wskazówek zegara w widoku z prawej strony.
+    """Płynna animacja SVG sterowana kontrolkami umieszczonymi pod rysunkiem."""
+    frame_count = 96
+    # Malejący kąt daje ruch zgodny z ruchem wskazówek zegara w widoku z prawej strony.
     phases = [((start_phase - i * 360.0 / frame_count) % 360.0) for i in range(frame_count)]
     frames = [
         render_bike_svg(
@@ -630,63 +630,30 @@ def render_smooth_animation(
         )
         for phase in phases
     ]
-    initial_rpm = int(round(float(settings.cadence)))
+    rpm_value = int(round(float(settings.cadence)))
     speed_multiplier = max(0.1, float(st.session_state.get("animation_speed", 1.0)))
     html_doc = f"""
     <!doctype html><html><head><meta charset='utf-8'>
     <style>
       html,body{{margin:0;padding:0;background:#07131e;overflow:hidden;font-family:Segoe UI,Arial;color:#eef7ff}}
-      #panel{{display:flex;align-items:center;gap:10px;padding:9px 12px;background:#102333;border:1px solid #35546c;border-radius:12px;margin:0 0 8px}}
-      button{{background:#1a3a52;color:#fff;border:1px solid #507590;border-radius:9px;padding:8px 14px;font-weight:700;cursor:pointer}}
-      button:hover{{background:#25506e}}
-      .rpm-wrap{{display:flex;align-items:center;gap:10px;flex:1;min-width:250px}}
-      .rpm-wrap label{{font-size:13px;font-weight:700;color:#bcd0df;white-space:nowrap}}
-      input[type=range]{{width:100%;accent-color:#67e4b5}}
-      #rpmValue{{min-width:78px;text-align:center;padding:7px 10px;border-radius:9px;background:#0b1823;border:1px solid #3c5f77;color:#67e4b5;font-size:15px;font-weight:800}}
-      #rotValue{{min-width:98px;color:#9fb6c8;font-size:12px}}
       #stage{{position:relative;width:100%;height:610px;background:#07131e;border-radius:16px;overflow:hidden}}
       .frame{{position:absolute;inset:0;display:none}}
       .frame.active{{display:block}}
       .frame svg{{display:block;width:100%;height:100%}}
-      #badge{{position:absolute;right:18px;top:16px;z-index:10;background:rgba(7,19,30,.90);border:1px solid #4a718d;border-radius:12px;padding:9px 13px;color:#fff;font-weight:800;box-shadow:0 5px 18px rgba(0,0,0,.25)}}
+      #badge{{position:absolute;right:18px;top:16px;z-index:10;background:rgba(7,19,30,.92);border:1px solid #4a718d;border-radius:12px;padding:9px 13px;color:#fff;font-weight:800;box-shadow:0 5px 18px rgba(0,0,0,.25)}}
       #badge span{{color:#67e4b5}}
     </style>
     </head><body>
-      <div id='panel'>
-        <button id='toggle'>⏸ Pauza</button>
-        <button id='reset'>↺ Reset</button>
-        <div class='rpm-wrap'>
-          <label for='rpm'>Kadencja animacji</label>
-          <input id='rpm' type='range' min='40' max='130' step='1' value='{initial_rpm}'>
-          <div id='rpmValue'>{initial_rpm} rpm</div>
-          <div id='rotValue'></div>
-        </div>
-      </div>
-      <div id='stage'><div id='badge'>Kadencja: <span id='badgeRpm'>{initial_rpm} rpm</span></div></div>
+      <div id='stage'><div id='badge'>Kadencja: <span>{rpm_value} rpm</span> &nbsp;•&nbsp; {speed_multiplier:.2f}×</div></div>
     <script>
       const svgFrames = {json.dumps(frames, ensure_ascii=False)};
       const stage = document.getElementById('stage');
       stage.insertAdjacentHTML('beforeend', svgFrames.map((svg,i)=>`<div class="frame ${{i===0?'active':''}}" data-i="${{i}}">${{svg}}</div>`).join(''));
       const nodes = Array.from(stage.querySelectorAll('.frame'));
-      const rpm = document.getElementById('rpm');
-      const rpmValue = document.getElementById('rpmValue');
-      const badgeRpm = document.getElementById('badgeRpm');
-      const rotValue = document.getElementById('rotValue');
-      const toggle = document.getElementById('toggle');
-      const reset = document.getElementById('reset');
-      const speedMultiplier = {speed_multiplier:.3f};
-      let running = true;
       let currentIndex = 0;
-      let startTime = performance.now();
-      let pausedProgress = 0;
+      const durationMs = 60000 / Math.max(1, {rpm_value}) / {speed_multiplier:.3f};
+      const startTime = performance.now();
 
-      function durationMs() {{ return 60000 / Math.max(1, Number(rpm.value)) / speedMultiplier; }}
-      function updateRpmText() {{
-        const value = Number(rpm.value);
-        rpmValue.textContent = `${{value}} rpm`;
-        badgeRpm.textContent = `${{value}} rpm`;
-        rotValue.textContent = `${{(value/60).toFixed(2)}} obr./s`;
-      }}
       function showFrame(index) {{
         if (index === currentIndex && nodes[index].classList.contains('active')) return;
         nodes[currentIndex].classList.remove('active');
@@ -694,38 +661,14 @@ def render_smooth_animation(
         nodes[currentIndex].classList.add('active');
       }}
       function tick(now) {{
-        if (running) {{
-          const duration = durationMs();
-          const progress = ((now - startTime) % duration) / duration;
-          showFrame(Math.floor(progress * nodes.length) % nodes.length);
-          pausedProgress = progress;
-        }}
+        const progress = ((now - startTime) % durationMs) / durationMs;
+        showFrame(Math.floor(progress * nodes.length) % nodes.length);
         requestAnimationFrame(tick);
       }}
-      toggle.addEventListener('click', () => {{
-        running = !running;
-        if (running) {{
-          startTime = performance.now() - pausedProgress * durationMs();
-          toggle.textContent = '⏸ Pauza';
-        }} else {{
-          toggle.textContent = '▶ Play';
-        }}
-      }});
-      reset.addEventListener('click', () => {{
-        pausedProgress = 0;
-        showFrame(0);
-        startTime = performance.now();
-      }});
-      rpm.addEventListener('input', () => {{
-        const phaseProgress = currentIndex / nodes.length;
-        updateRpmText();
-        startTime = performance.now() - phaseProgress * durationMs();
-      }});
-      updateRpmText();
       requestAnimationFrame(tick);
     </script></body></html>
     """
-    components.html(html_doc, height=680, scrolling=False)
+    components.html(html_doc, height=620, scrolling=False)
 
 
 def safe_import_url(url: str, fallback: BikeGeometry) -> tuple[BikeGeometry, list[str]]:
@@ -1049,7 +992,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v2.5</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v2.6</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1252,18 +1195,8 @@ with st.sidebar:
     st.slider("Regulacja siodła na szynach [mm]", -60.0, 80.0, key="saddle_fore_aft", step=1.0)
     st.slider("Zmiana wysokości kierownicy [mm]", -60.0, 100.0, key="handlebar_stack_delta", step=1.0)
     st.slider("Zmiana zasięgu kierownicy [mm]", -80.0, 80.0, key="handlebar_reach_delta", step=1.0)
-    st.slider("Kadencja [rpm]", 40.0, 130.0, key="cadence", step=1.0)
     st.slider("Kąt stopy [°]", -20.0, 15.0, key="foot_angle", step=1.0)
-    st.slider("Pozycja korby [°]", 0.0, 359.0, key="phase", step=1.0, disabled=bool(st.session_state.animate_crank))
-    play_col, pause_col, reset_col = st.columns(3)
-    play_col.button("▶ Play", key="anim_play", use_container_width=True, on_click=start_crank_animation)
-    pause_col.button("⏸ Pauza", key="anim_pause", use_container_width=True, on_click=pause_crank_animation)
-    reset_col.button("↺ Reset", key="anim_reset", use_container_width=True, on_click=reset_crank_animation)
-    st.slider("Prędkość animacji [×]", 0.25, 2.0, key="animation_speed", step=0.25)
-    st.caption("Animacja działa zgodnie z kadencją × ustawiony mnożnik prędkości.")
-    st.checkbox("Pokaż kąty na rysunku", key="show_angles")
-    st.slider("Skala symulacji [%]", 65.0, 100.0, key="simulation_scale", step=1.0, help="Zmniejsz, aby cały rower i rowerzysta mieścili się wygodniej na ekranie.")
-    st.checkbox("Pokaż wymiary M1–M5", key="show_measurements")
+    st.caption("Sterowanie animacją, kadencją, skalą i oznaczeniami znajduje się pod rysunkiem roweru w zakładce **Symulacja**.")
 
 settings = current_settings()
 rider = current_rider()
@@ -1272,7 +1205,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v2.5</h1>
+  <h1>BikeFit Studio Online v2.6</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1315,6 +1248,52 @@ with main_tab:
             ),
             unsafe_allow_html=True,
         )
+
+    st.markdown("### Sterowanie symulacją")
+    with st.container(border=True):
+        top_left, top_right = st.columns(2)
+        top_left.slider(
+            "Kadencja [rpm]",
+            40.0,
+            130.0,
+            key="cadence",
+            step=1.0,
+            help="Kadencja steruje tempem animacji oraz jest używana w aktualnym profilu ustawienia.",
+        )
+        top_right.slider(
+            "Pozycja korby [°]",
+            0.0,
+            359.0,
+            key="phase",
+            step=1.0,
+            disabled=bool(st.session_state.animate_crank),
+        )
+
+        play_col, pause_col, reset_col, state_col = st.columns([1, 1, 1, 2])
+        play_col.button("▶ Play", key="anim_play", use_container_width=True, on_click=start_crank_animation)
+        pause_col.button("⏸ Pauza", key="anim_pause", use_container_width=True, on_click=pause_crank_animation)
+        reset_col.button("↺ Reset", key="anim_reset", use_container_width=True, on_click=reset_crank_animation)
+        state_col.info(
+            f"Stan: **{'odtwarzanie' if bool(st.session_state.animate_crank) else 'pauza'}** · "
+            f"{float(st.session_state.cadence):.0f} rpm · "
+            f"{float(st.session_state.animation_speed):.2f}×"
+        )
+
+        speed_col, scale_col = st.columns(2)
+        speed_col.slider("Prędkość animacji [×]", 0.25, 2.0, key="animation_speed", step=0.25)
+        scale_col.slider(
+            "Skala symulacji [%]",
+            65.0,
+            100.0,
+            key="simulation_scale",
+            step=1.0,
+            help="Zmniejsz, aby cały rower i rowerzysta mieścili się wygodniej na ekranie.",
+        )
+
+        option_col1, option_col2 = st.columns(2)
+        option_col1.checkbox("Pokaż kąty na rysunku", key="show_angles")
+        option_col2.checkbox("Pokaż wymiary M1–M5", key="show_measurements")
+        st.caption("Animacja działa zgodnie z kadencją × ustawiony mnożnik prędkości.")
 
     cards = "".join(
         f'<div class="measure-card"><div class="measure-code" style="color:{color}">{code}</div><div class="measure-name">{name}</div><div class="measure-value">{value}</div></div>'
