@@ -14,6 +14,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from bikefit.diagnostics import FitDiagnostic, explain_fit
+from bikefit.frame_size import FrameSizeAssessment, assess_frame_size
 from bikefit.internet_import import fetch_geometry
 from bikefit.kinematics import analyze_cycle, bike_points, calculate_pose
 from bikefit.models import BikeGeometry, FitSettings, Rider
@@ -21,9 +22,12 @@ from bikefit.optimizer import optimize_fit
 from bikefit.shared_store import (
     GeometryStoreConfig,
     SharedStoreError,
+    build_store_document,
     config_from_mapping,
     load_local_bikes,
     load_remote_bikes,
+    merge_bike_payloads,
+    parse_store_document,
     save_local_bike,
     save_remote_bike,
 )
@@ -47,7 +51,7 @@ COUNTER_NAMESPACE = "misiek-bikefit-studio-online"
 COUNTER_API_BASE = "https://api.counterapi.dev/v1"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v3.2 — MisieK",
+    page_title="BikeFit Studio Online v3.3 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -106,6 +110,14 @@ CSS = """
 .measure-code {font-weight:900;font-size:1rem;}
 .measure-name {color:#b8cad9;font-size:.78rem;min-height:34px;margin-top:4px;}
 .measure-value {color:#f8fbff;font-size:1.1rem;font-weight:800;margin-top:5px;}
+.frame-size-card {padding:16px 18px;border-radius:16px;background:#10202e;border:1px solid #35536b;margin:12px 0 16px;}
+.frame-size-head {display:flex;align-items:center;gap:10px;margin-bottom:7px;}
+.frame-size-badge {display:inline-flex;padding:5px 10px;border-radius:999px;font-size:.77rem;font-weight:900;letter-spacing:.04em;text-transform:uppercase;background:#162b3d;}
+.frame-size-title {font-size:1.15rem;font-weight:850;color:#f5fbff;}
+.frame-size-summary {color:#c2d2df;line-height:1.5;margin:6px 0;}
+.frame-size-reason {color:#a9bdcd;margin:4px 0;line-height:1.4;}
+.frame-size-suggestion {margin-top:10px;padding:10px 12px;border-radius:10px;background:#0b1823;color:#eef7ff;border-left:4px solid currentColor;}
+.geometry-store-warning {padding:10px 12px;border-radius:12px;background:#392b12;border:1px solid #7c6222;color:#ffe7a3;margin:8px 0;line-height:1.4;}
 .footer-note {text-align:center;color:#8399ab;font-size:.78rem;margin-top:28px;}
 div[data-baseweb="select"] > div {background:#162838 !important;color:#f5fbff !important;border-color:#3c5b73 !important;}
 div[data-baseweb="select"] input {color:#f5fbff !important;-webkit-text-fill-color:#f5fbff !important;}
@@ -549,6 +561,43 @@ def render_fit_diagnostics(diagnostics: list[FitDiagnostic], score: float) -> st
         f'<div class="fit-diagnostic-summary">Ocena spadła do {score:.1f}/100. Poniżej 90/100 program pokazuje najbardziej prawdopodobne przyczyny, ich wpływ na pozycję i kierunek korekty.</div>'
         f'<div class="fit-diagnostic-grid">{cards_html}</div>'
         '</section>'
+    )
+
+
+def render_frame_size_assessment(result: FrameSizeAssessment, compact: bool = False) -> str:
+    reasons = "".join(
+        f'<div class="frame-size-reason">• {html.escape(reason)}</div>'
+        for reason in result.reasons
+    )
+    confidence = f"Pewność oceny: {html.escape(result.confidence)}"
+    compact_class = ' style="margin:8px 0 12px"' if compact else ""
+    return (
+        f'<section class="frame-size-card"{compact_class}>'
+        f'<div class="frame-size-head"><span class="frame-size-badge" style="color:{result.color};border:1px solid {result.color}">ROZMIAR RAMY</span>'
+        f'<div class="frame-size-title">{html.escape(result.title)}</div></div>'
+        f'<div class="frame-size-summary">{html.escape(result.summary)}</div>'
+        f'{reasons}'
+        f'<div class="frame-size-suggestion" style="color:{result.color}"><b>Co sprawdzić:</b> '
+        f'<span style="color:#eef7ff">{html.escape(result.suggestion)}</span></div>'
+        f'<div class="small-muted" style="margin-top:8px">{confidence}. Ocena jest orientacyjna i nie zastępuje tabeli rozmiarów producenta.</div>'
+        '</section>'
+    )
+
+
+def geometry_backup_payloads() -> list[dict[str, object]]:
+    """Łączy wspólną bazę i geometrie z bieżącej sesji do kopii bezpieczeństwa."""
+    shared, _persistent, _status = load_shared_geometry_payloads()
+    merged: list[dict[str, object]] = []
+    for payload in [*shared, *st.session_state.get("custom_bikes", [])]:
+        if isinstance(payload, dict):
+            merged = merge_bike_payloads(merged, payload)
+    return merged
+
+
+def geometry_backup_bytes() -> bytes:
+    return build_store_document(
+        geometry_backup_payloads(),
+        saved_by=str(st.session_state.get("user_alias", "")),
     )
 
 
@@ -1275,6 +1324,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     analysis = analyze_cycle(bike, rider, settings, samples=72)
     pressure = calculate_tire_pressure(rider, bike, settings)
     diagnostics = explain_fit(bike, rider, settings, analysis, threshold=90.0)
+    frame_size = assess_frame_size(bike, rider, settings)
     rows = "".join(f"<tr><td>{c}</td><td>{n}</td><td><b>{v}</b></td></tr>" for c,n,v,_ in measurement_values(bike,settings))
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     diagnostic_rows = "".join(
@@ -1284,12 +1334,15 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     ) or "<li>Ocena powyżej 90/100 — brak ostrzeżeń modelu.</li>"
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v3.2</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v3.3</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
     <h3>Kąty</h3><p>Kolano: {analysis.knee_flexion_min:.1f}–{analysis.knee_flexion_max:.1f}°. Biodro: {analysis.hip_angle_min:.1f}–{analysis.hip_angle_max:.1f}°. Łokieć: {analysis.elbow_angle:.1f}°.</p>
     <h3>Ciśnienie startowe</h3><p>Przód {pressure.front_bar:.2f} bar / {pressure.front_psi:.0f} psi; tył {pressure.rear_bar:.2f} bar / {pressure.rear_psi:.0f} psi.</p>
+    <h3>Ocena rozmiaru ramy</h3><p><b>{html.escape(frame_size.title)}</b></p><p>{html.escape(frame_size.summary)}</p>
+    <ul>{''.join(f'<li>{html.escape(reason)}</li>' for reason in frame_size.reasons)}</ul>
+    <p><b>Sugestia:</b> {html.escape(frame_size.suggestion)}</p>
     <h3>Wskazówki</h3><ul>{notes}</ul>
     <h3>Dlaczego ustawienie może być nieprawidłowe</h3><ul>{diagnostic_rows}</ul>
     <p><small>Wynik jest orientacyjny i nie zastępuje profesjonalnego bike fittingu ani konsultacji medycznej.</small></p></html>"""
@@ -1314,6 +1367,20 @@ with st.sidebar:
         st.caption("☁️ " + st.session_state.shared_store_status)
     else:
         st.caption("💾 " + st.session_state.shared_store_status)
+        st.markdown(
+            '<div class="geometry-store-warning"><b>Baza lokalna nie jest trwała.</b><br>'
+            'Geometrie zapisane tylko na serwerze mogą zniknąć po wdrożeniu nowej wersji. '
+            'Pobierz kopię albo skonfiguruj ukrytą wspólną bazę online.</div>',
+            unsafe_allow_html=True,
+        )
+        st.download_button(
+            "Pobierz kopię geometrii",
+            data=geometry_backup_bytes(),
+            file_name="bikefit_geometrie_backup.json",
+            mime="application/json",
+            key="sidebar_geometry_backup",
+            use_container_width=True,
+        )
     if st.button("Odśwież wspólną bazę", key="refresh_shared_geometries", use_container_width=True):
         load_remote_shared_bikes_cached.clear()
         load_local_shared_bikes_cached.clear()
@@ -1570,11 +1637,12 @@ settings = current_settings()
 rider = current_rider()
 analysis = analyze_cycle(bike, rider, settings, samples=72)
 fit_diagnostics = explain_fit(bike, rider, settings, analysis, threshold=90.0)
+frame_size_assessment = assess_frame_size(bike, rider, settings)
 pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v3.2</h1>
+  <h1>BikeFit Studio Online v3.3</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1590,6 +1658,7 @@ with m4:
     st.markdown(f'<div class="metric-card"><div class="metric-label">Ciśnienie tył</div><div class="metric-value">{pressure.rear_bar:.2f} bar</div><div class="metric-note">{pressure.rear_psi:.0f} psi</div></div>', unsafe_allow_html=True)
 
 st.markdown(render_fit_diagnostics(fit_diagnostics, analysis.score), unsafe_allow_html=True)
+st.markdown(render_frame_size_assessment(frame_size_assessment, compact=True), unsafe_allow_html=True)
 
 main_tab, config_tab, tire_tab, geometry_tab, import_tab, angles_tab, report_tab = st.tabs([
     "Symulacja", "Wymiary i konfigurator", "Opony i ciśnienie", "Geometria roweru", "Import online", "Wykresy kątów", "Raport",
@@ -1717,6 +1786,7 @@ with config_tab:
             <div class="config-warning">Wprowadzaj zmiany na prawdziwym rowerze stopniowo, zwykle po 2–5 mm, i testuj każdą zmianę podczas jazdy.</div>
           </section>
         </div>
+        {render_frame_size_assessment(frame_size_assessment)}
         {diagnostic_detail_html}
         <section class="measure-help"><h3>Jak zmierzyć samą metrówką</h3>{guide_html}</section>
     '''
@@ -1760,6 +1830,50 @@ with geometry_tab:
     g2.metric("Reach", f"{active_geometry.reach:.1f} mm")
     g3.metric("Kąt rury podsiodłowej", f"{active_geometry.seat_tube_angle:.1f}°")
     g4.metric("Rozstaw osi", f"{active_geometry.wheelbase:.1f} mm")
+
+    st.markdown(render_frame_size_assessment(frame_size_assessment), unsafe_allow_html=True)
+
+    st.markdown("#### Kopia i przywracanie własnych geometrii")
+    backup_col, restore_col = st.columns(2)
+    with backup_col:
+        st.download_button(
+            "Pobierz kopię wszystkich dodanych geometrii",
+            data=geometry_backup_bytes(),
+            file_name="bikefit_geometrie_backup.json",
+            mime="application/json",
+            key="geometry_backup_download",
+            use_container_width=True,
+        )
+    with restore_col:
+        geometry_backup_upload = st.file_uploader(
+            "Przywróć kopię geometrii JSON",
+            type=["json"],
+            key="geometry_backup_upload",
+            help="Wczytaj plik pobrany wcześniej z aplikacji. Rekordy o tej samej nazwie zostaną zaktualizowane.",
+        )
+    if geometry_backup_upload is not None and st.button(
+        "Przywróć geometrie z kopii",
+        key="restore_geometry_backup",
+        use_container_width=True,
+    ):
+        try:
+            restored_payloads = parse_store_document(geometry_backup_upload.getvalue())
+            if not restored_payloads:
+                st.warning("Plik nie zawiera żadnych geometrii.")
+            else:
+                saved_count = 0
+                last_message = ""
+                for payload in restored_payloads:
+                    restored_bike = BikeGeometry.from_dict(payload)
+                    remember_geometry_in_session(restored_bike)
+                    _persistent_save, last_message = persist_shared_geometry(
+                        restored_bike, str(st.session_state.user_alias)
+                    )
+                    saved_count += 1
+                st.success(f"Przywrócono {saved_count} geometrii. {last_message}")
+                st.rerun()
+        except Exception as exc:
+            st.error(f"Nie udało się przywrócić kopii: {exc}")
 
     st.markdown("#### Wszystkie aktywne wymiary")
     table_rows = "".join(
@@ -1867,5 +1981,5 @@ with report_tab:
 
 render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online v3.2 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
+<div class="footer-note">BikeFit Studio Online v3.3 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
 """, unsafe_allow_html=True)

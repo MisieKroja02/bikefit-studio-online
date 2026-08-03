@@ -1,0 +1,25 @@
+AKTUALIZACJA BIKEFIT STUDIO ONLINE DO v3.3
+
+Podmień w repozytorium:
+1. app.py
+2. dodaj nowy plik bikefit/frame_size.py
+
+Nie nadpisuj pliku data/community_bikes.json, jeżeli wcześniej ręcznie zapisałeś w nim własne geometrie.
+
+Po Commit changes:
+- poczekaj na automatyczne wdrożenie,
+- w razie potrzeby użyj Manage app -> Reboot app,
+- odśwież stronę Ctrl+F5.
+
+NOWOŚCI:
+- ocena rozmiaru ramy: odpowiednia / granicznie mała / granicznie duża / prawdopodobnie za mała / prawdopodobnie za duża,
+- wyjaśnienie, które korekty wskazują na niewłaściwy rozmiar,
+- sugestia sprawdzenia większego lub mniejszego rozmiaru,
+- kopia bezpieczeństwa wszystkich własnych geometrii,
+- przywracanie geometrii z pliku JSON,
+- wyraźne ostrzeżenie, gdy aplikacja działa wyłącznie na nietrwałej bazie lokalnej.
+
+WAŻNE O TRWAŁEJ BAZIE:
+Geometrie zapisane wyłącznie lokalnie na serwerze Streamlit mogą zniknąć po restarcie lub nowym wdrożeniu.
+Aby były wspólne i trwałe dla wszystkich użytkowników, skonfiguruj ukrytą bazę zgodnie z plikiem KONFIGURACJA_WSPOLNEJ_BAZY.txt.
+Token jest przechowywany w Streamlit Secrets i nie jest widoczny dla użytkowników aplikacji.

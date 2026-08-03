@@ -1,87 +1,28 @@
-# BikeFit Studio Online v3.2
+# BikeFit Studio Online v3.3
 
-Internetowy konfigurator pozycji na rowerze. Autor: **MisieK**.
+Internetowy konfigurator ustawienia pozycji na rowerze.
 
-## Najważniejsze funkcje
+## Nowości v3.3
 
-- wejście przez imię lub pseudonim,
-- niezależna sesja każdej osoby korzystającej z linku,
-- wybór, import i ręczna edycja geometrii roweru,
-- wspólna baza geometrii dodanych przez użytkowników,
-- dobór ustawienia bazowego i automatyczna optymalizacja,
-- płynna animacja korby według kadencji,
-- kąty kolana, biodra, łokcia i tułowia,
-- czytelne wymiary M1–M5 i regulacja siodła na szynach,
-- kalkulator ciśnienia opon,
-- wykres kątów przez pełny obrót korby,
-- raport HTML oraz kopia profilu JSON,
-- licznik odwiedzin w stopce.
+- ocena, czy wybrana rama jest odpowiednia dla rowerzysty,
+- wykrywanie ramy prawdopodobnie za małej lub za dużej,
+- sugestia porównania sąsiedniego rozmiaru,
+- analiza wymaganych korekt stacku i reachu,
+- kopia bezpieczeństwa dodanych geometrii,
+- przywracanie bazy geometrii z pliku JSON,
+- ostrzeżenie o nietrwałym trybie lokalnym.
 
-## Zmiany v3.1
+## Trwałość geometrii
 
-- neutralne dane startowe: 175 cm, 75 kg, przekrok 810 mm,
-- domyślna geometria demonstracyjna Gravel M,
-- geometrie importowane i wpisywane ręcznie mogą być zapisywane we wspólnej trwałej bazie,
-- zapis wspólnej geometrii jest wykonywany w tle; użytkownik nie widzi odnośników administracyjnych,
-- dodano Bike-Stats zamiast 99 Spokes,
-- importer rozpoznaje również popularne niemieckie nazwy parametrów,
-- licznik przeniesiono na CounterAPI i zabezpieczono przed wielokrotnym naliczaniem przy odświeżaniu,
-- awaria wspólnej bazy lub licznika nie zatrzymuje konfiguratora.
+Zmiany zapisane tylko na lokalnym systemie plików Streamlit mogą zniknąć po ponownym wdrożeniu. Trwała wspólna baza wymaga konfiguracji opisanej w `KONFIGURACJA_WSPOLNEJ_BAZY.txt`.
+
+Bez tej konfiguracji przed aktualizacją pobierz kopię geometrii w zakładce `Geometria roweru`.
 
 ## Uruchomienie lokalne
 
 ```bash
-python -m pip install -r requirements.txt
+pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Wdrożenie
-
-Repozytorium powinno zawierać w katalogu głównym:
-
-- `app.py`,
-- `requirements.txt`,
-- foldery `bikefit`, `data`, `assets`, `.streamlit`.
-
-W Streamlit Community Cloud jako główny plik wybierz `app.py`.
-
-## Trwała wspólna baza geometrii
-
-Bez konfiguracji aplikacja używa lokalnego pliku `data/community_bikes.json`. Działa on podczas bieżącego uruchomienia serwera, ale hosting może go wyczyścić przy ponownym wdrożeniu.
-
-Aby wszystkie dodane geometrie pozostały po restarcie i były widoczne dla wszystkich osób, skonfiguruj sekcję `[geometry_store]` w Streamlit Secrets. Dokładna instrukcja znajduje się w pliku:
-
-`KONFIGURACJA_WSPOLNEJ_BAZY.txt`
-
-Token nigdy nie powinien znajdować się w repozytorium ani w `app.py`.
-
-## Testy
-
-```bash
-python -m pytest -q
-```
-
-Pakiet zawiera testy silnika biomechanicznego, importera, kalkulatora opon, wspólnej bazy geometrii, licznika i pełny test uruchomienia interfejsu z atrapą Streamlit.
-
-## Zastrzeżenie
-
-Program jest narzędziem orientacyjnym. Nie zastępuje profesjonalnego bike fittingu, fizjoterapeuty ani diagnostyki medycznej.
-
-## Nowości v3.1
-
-- import geometrii działa dwuetapowo: najpierw pobranie danych, potem sprawdzenie i zapis,
-- przed zapisaniem można wpisać własną nazwę geometrii,
-- nazwa pojawia się na wspólnej liście rowerów zamiast tytułu strony lub adresu URL,
-- zapis pod istniejącą nazwą aktualizuje daną geometrię, a nowa nazwa tworzy nową pozycję.
-
-## Nowości v3.2 — wyjaśnianie nieprawidłowej pozycji
-
-Gdy ocena spadnie poniżej 90/100, aplikacja wyjaśnia:
-
-- który parametr jest prawdopodobnie ustawiony nieprawidłowo,
-- jaki kąt lub zakres wyszedł poza granice modelu,
-- dlaczego dana pozycja jest biomechanicznie niekorzystna,
-- jakie objawy mogą pojawić się podczas jazdy,
-- w którą stronę i o ile orientacyjnie zmienić ustawienie.
-
-Komentarze reagują na wysokość i przesunięcie siodła, wysokość i zasięg kierownicy, otwarcie biodra, kąt łokcia oraz pochylenie tułowia.
+Autor: MisieK
