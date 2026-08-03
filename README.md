@@ -28,12 +28,11 @@ streamlit run app.py
 Autor: MisieK
 
 
-## Zmiana v3.7
+## Zmiana v3.6
 
 - Panel „Import geometrii z linku” jest domyślnie zwinięty i rozwija się dopiero po kliknięciu użytkownika.
 
 
-## Nowości v3.7
-- dodatkowa kontrola oznaczenia rozmiaru XS/S/M/L/XL,
-- poprawna ocena oczywistych niedopasowań, np. 155 cm na ramie M,
-- automatyczna aktualizacja oceny bez ponownej optymalizacji.
+## Usuwanie błędnych geometrii — v3.8
+
+Własne geometrie można usunąć bezpośrednio pod listą wyboru. Wbudowane geometrie przykładowe są chronione. Po rozwinięciu sekcji „Usuń wybraną geometrię” należy zaznaczyć potwierdzenie i kliknąć przycisk usuwania. Operacja usuwa rekord zarówno z trwałego folderu online, jak i z lokalnej kopii.

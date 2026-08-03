@@ -1,0 +1,13 @@
+Aktualizacja BikeFit Studio Online v3.8
+
+Podmień na GitHubie dwa pliki:
+1. app.py
+2. bikefit/shared_store.py
+
+Następnie wykonaj Commit changes i w razie potrzeby uruchom Manage app -> Reboot app.
+
+Nowość:
+- własne geometrie można usuwać bezpośrednio z aplikacji,
+- wymagane jest potwierdzenie,
+- geometrie wbudowane są chronione,
+- usunięcie działa dla trwałego folderu online i bazy lokalnej.

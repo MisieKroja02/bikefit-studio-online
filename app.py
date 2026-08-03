@@ -24,6 +24,8 @@ from bikefit.shared_store import (
     SharedStoreError,
     build_store_document,
     config_from_mapping,
+    delete_local_geometry_file,
+    delete_remote_bike,
     load_local_geometry_folder,
     load_remote_bikes,
     merge_bike_payloads,
@@ -52,7 +54,7 @@ COUNTER_NAMESPACE = "misiek-bikefit-studio-online"
 COUNTER_API_BASE = "https://api.counterapi.dev/v1"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v3.7 — MisieK",
+    page_title="BikeFit Studio Online v3.8 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -508,6 +510,31 @@ def remember_geometry_in_session(bike: BikeGeometry) -> None:
         if str(item.get("name", "")).casefold() != key
     ] + [payload]
 
+def delete_shared_geometry(bike_name: str) -> tuple[bool, str]:
+    """Usuwa własną geometrię z bazy online/lokalnej i z bieżącej sesji."""
+    key = bike_name.casefold()
+    st.session_state.custom_bikes = [
+        item for item in st.session_state.custom_bikes
+        if str(item.get("name", "")).casefold() != key
+    ]
+    config = geometry_store_config()
+    try:
+        if config is not None:
+            removed = delete_remote_bike(config, bike_name)
+            load_remote_shared_bikes_cached.clear()
+            if removed:
+                return True, f"Usunięto geometrię: {bike_name}"
+            return False, "Nie znaleziono tej geometrii w trwałej bazie."
+        removed = delete_local_geometry_file(
+            COMMUNITY_BIKES_DIR, bike_name, legacy_file=COMMUNITY_BIKES_FILE
+        )
+        load_local_shared_bikes_cached.clear()
+        if removed:
+            return True, f"Usunięto lokalną geometrię: {bike_name}"
+        return False, "Nie znaleziono tej geometrii w bazie lokalnej."
+    except (SharedStoreError, OSError) as exc:
+        return False, f"Nie udało się usunąć geometrii: {exc}"
+
 
 def clean_geometry_name(value: object, fallback: str = "Nowa geometria") -> str:
     """Zwraca krótką, czytelną nazwę geometrii do wspólnej bazy."""
@@ -718,6 +745,8 @@ def init_state() -> None:
         "fit_action_status": "",
         "fit_action_error": False,
         "pending_profile_payload": None,
+        "geometry_action_status": "",
+        "geometry_action_error": False,
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -1338,7 +1367,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     ) or "<li>Ocena powyżej 90/100 — brak ostrzeżeń modelu.</li>"
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v3.7</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v3.8</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1385,6 +1414,14 @@ with st.sidebar:
             key="sidebar_geometry_backup",
             use_container_width=True,
         )
+    if st.session_state.geometry_action_status:
+        if st.session_state.geometry_action_error:
+            st.error(st.session_state.geometry_action_status)
+        else:
+            st.success(st.session_state.geometry_action_status)
+        st.session_state.geometry_action_status = ""
+        st.session_state.geometry_action_error = False
+
     if st.button("Odśwież wspólną bazę", key="refresh_shared_geometries", use_container_width=True):
         load_remote_shared_bikes_cached.clear()
         load_local_shared_bikes_cached.clear()
@@ -1401,6 +1438,30 @@ with st.sidebar:
     if st.session_state.get("geometry_for") != current_name:
         reset_geometry_state(base_bike)
         st.session_state.geometry_for = current_name
+
+    built_in_names = {item.name.casefold() for item in load_bikes()}
+    if current_name.casefold() not in built_in_names:
+        with st.expander("🗑️ Usuń wybraną geometrię", expanded=False):
+            st.warning(
+                f"Usuniesz geometrię **{current_name}** ze wspólnej bazy. "
+                "Ta operacja nie usuwa geometrii wbudowanych w program."
+            )
+            confirm_key = "confirm_delete_geometry"
+            st.checkbox("Potwierdzam usunięcie tej geometrii", key=confirm_key)
+            if st.button(
+                "Usuń geometrię",
+                key="delete_selected_geometry",
+                use_container_width=True,
+                disabled=not bool(st.session_state.get(confirm_key, False)),
+            ):
+                ok, message = delete_shared_geometry(current_name)
+                st.session_state.geometry_action_status = message
+                st.session_state.geometry_action_error = not ok
+                if ok:
+                    fallback_name = load_bikes()[0].name
+                    st.session_state.selected_bike = fallback_name
+                    st.session_state.geometry_for = ""
+                st.rerun()
 
     with st.expander("🌐 Import geometrii z linku", expanded=False):
         st.caption("Otwórz katalog, wybierz dokładny model, rocznik i rozmiar, a następnie wklej adres strony. Po pobraniu możesz wpisać własną nazwę geometrii przed zapisaniem.")
@@ -1646,7 +1707,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v3.7</h1>
+  <h1>BikeFit Studio Online v3.8</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1986,5 +2047,5 @@ with report_tab:
 
 render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online v3.7 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
+<div class="footer-note">BikeFit Studio Online v3.8 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
 """, unsafe_allow_html=True)

@@ -91,6 +91,22 @@ def merge_bike_payloads(existing: list[Mapping[str, Any]], new_payload: Mapping[
     return merged
 
 
+
+
+def remove_bike_payloads(existing: list[Mapping[str, Any]], bike_name: str) -> tuple[list[dict[str, Any]], bool]:
+    """Usuwa geometrię po nazwie, bez rozróżniania wielkości liter."""
+    key = " ".join(str(bike_name or "").split()).casefold()
+    kept: list[dict[str, Any]] = []
+    removed = False
+    for item in existing:
+        normalized = normalize_bike_payload(item)
+        if normalized["name"].casefold() == key:
+            removed = True
+            continue
+        kept.append(normalized)
+    kept.sort(key=lambda item: item["name"].casefold())
+    return kept, removed
+
 def parse_store_document(raw: bytes | str | None) -> list[dict[str, Any]]:
     """Czyta starszy dokument zawierający listę geometrii."""
     if raw is None:
@@ -458,3 +474,108 @@ def save_local_geometry_file(path: Path, bike_payload: Mapping[str, Any], saved_
     tmp.write_bytes(build_geometry_document(normalized, saved_by=saved_by))
     tmp.replace(target)
     return load_local_geometry_folder(path)
+
+
+def _rewrite_remote_single_file_without_bike(
+    config: GeometryStoreConfig,
+    path: str,
+    bike_name: str,
+    *,
+    transport: Transport,
+    timeout: float,
+) -> bool:
+    bikes, sha = _load_remote_single_file(config, path, transport=transport, timeout=timeout)
+    filtered, removed = remove_bike_payloads(bikes, bike_name)
+    if not removed:
+        return False
+    if not sha:
+        return True
+    body = {
+        "message": f"Usuń geometrię: {bike_name}",
+        "content": base64.b64encode(build_store_document(filtered)).decode("ascii"),
+        "branch": config.branch,
+        "sha": sha,
+    }
+    status, raw = transport(
+        "PUT",
+        _api_url_for_path(config, path),
+        _headers(config),
+        json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        timeout,
+    )
+    if status not in (200, 201):
+        detail = raw.decode("utf-8", errors="replace")[:300]
+        raise SharedStoreError(f"Usunięcie geometrii ze starszej bazy nie powiodło się (HTTP {status}): {detail}")
+    return True
+
+
+def delete_remote_bike(
+    config: GeometryStoreConfig,
+    bike_name: str,
+    *,
+    transport: Transport = _default_transport,
+    timeout: float = 12.0,
+) -> bool:
+    """Usuwa geometrię z trwałej bazy GitHub. W trybie folderowym usuwa osobny plik."""
+    if not config.folder_mode:
+        return _rewrite_remote_single_file_without_bike(
+            config, config.path, bike_name, transport=transport, timeout=timeout
+        )
+
+    filename = geometry_filename(bike_name)
+    file_path = f"{config.path.strip('/')}/{filename}"
+    file_url = _api_url_for_path(config, file_path)
+    get_url = file_url + "?ref=" + urllib.parse.quote(config.branch, safe="")
+    status, raw = transport("GET", get_url, _headers(config), None, timeout)
+    removed = False
+    if status == 200:
+        _content, sha = _decode_github_file(raw)
+        if sha:
+            body = {
+                "message": f"Usuń geometrię: {bike_name}",
+                "sha": sha,
+                "branch": config.branch,
+            }
+            delete_status, delete_raw = transport(
+                "DELETE",
+                file_url,
+                _headers(config),
+                json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                timeout,
+            )
+            if delete_status != 200:
+                detail = delete_raw.decode("utf-8", errors="replace")[:300]
+                raise SharedStoreError(f"Usunięcie pliku geometrii nie powiodło się (HTTP {delete_status}): {detail}")
+            removed = True
+    elif status != 404:
+        detail = raw.decode("utf-8", errors="replace")[:300]
+        raise SharedStoreError(f"Sprawdzenie geometrii przed usunięciem nie powiodło się (HTTP {status}): {detail}")
+
+    if config.legacy_path and config.legacy_path != config.path:
+        try:
+            removed = _rewrite_remote_single_file_without_bike(
+                config, config.legacy_path, bike_name, transport=transport, timeout=timeout
+            ) or removed
+        except SharedStoreError:
+            # Brak lub niedostępna starsza baza nie blokuje usunięcia z folderu.
+            pass
+    return removed
+
+
+def delete_local_geometry_file(path: Path, bike_name: str, legacy_file: Path | None = None) -> bool:
+    """Usuwa lokalny plik geometrii i ewentualny wpis ze starszej bazy zbiorczej."""
+    removed = False
+    target = path / geometry_filename(bike_name)
+    if target.exists():
+        target.unlink()
+        removed = True
+    if legacy_file is not None and legacy_file.exists():
+        bikes = load_local_bikes(legacy_file)
+        filtered, legacy_removed = remove_bike_payloads(bikes, bike_name)
+        if legacy_removed:
+            legacy_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = legacy_file.with_suffix(legacy_file.suffix + ".tmp")
+            tmp.write_bytes(build_store_document(filtered))
+            tmp.replace(legacy_file)
+            removed = True
+    return removed

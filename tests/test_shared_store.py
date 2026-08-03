@@ -9,6 +9,8 @@ from bikefit.shared_store import (
     build_geometry_document,
     build_store_document,
     config_from_mapping,
+    delete_local_geometry_file,
+    delete_remote_bike,
     geometry_filename,
     load_local_bikes,
     load_local_geometry_folder,
@@ -193,3 +195,47 @@ def test_folder_mode_also_reads_legacy_file_for_migration() -> None:
 
     bikes, _ = load_remote_bikes(config, transport=transport)
     assert [b["name"] for b in bikes] == ["Stary zapis"]
+
+
+def test_local_folder_deletes_geometry_and_legacy_entry(tmp_path: Path) -> None:
+    folder = tmp_path / "geometries"
+    legacy = tmp_path / "community.json"
+    save_local_geometry_file(folder, sample("Do usunięcia"), "a")
+    save_local_bike(legacy, sample("Do usunięcia"), "a")
+    assert delete_local_geometry_file(folder, "Do usunięcia", legacy_file=legacy)
+    assert load_local_geometry_folder(folder, legacy) == []
+
+
+def test_remote_folder_deletes_geometry_file() -> None:
+    config = GeometryStoreConfig("token", "owner", "repo", path="geometries", legacy_path="")
+    target_name = geometry_filename("Do usunięcia")
+    calls = []
+
+    def transport(method, url, headers, data, timeout):
+        calls.append((method, url))
+        if method == "GET" and target_name in url:
+            return 200, github_file_response(build_geometry_document(sample("Do usunięcia")), "sha-del")
+        if method == "DELETE" and target_name in url:
+            body = json.loads(data.decode())
+            assert body["sha"] == "sha-del"
+            return 200, b'{}'
+        raise AssertionError((method, url))
+
+    assert delete_remote_bike(config, "Do usunięcia", transport=transport)
+    assert [method for method, _url in calls] == ["GET", "DELETE"]
+
+
+def test_remote_single_file_deletes_only_matching_geometry() -> None:
+    config = GeometryStoreConfig("token", "owner", "repo", path="community.json")
+
+    def transport(method, url, headers, data, timeout):
+        if method == "GET":
+            return 200, github_file_response(build_store_document([sample("Zostaje"), sample("Usuń")]), "sha1")
+        if method == "PUT":
+            body = json.loads(data.decode())
+            remaining = parse_store_document(base64.b64decode(body["content"]))
+            assert [item["name"] for item in remaining] == ["Zostaje"]
+            return 200, b'{}'
+        raise AssertionError((method, url))
+
+    assert delete_remote_bike(config, "Usuń", transport=transport)
