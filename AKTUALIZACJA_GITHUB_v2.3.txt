@@ -1,0 +1,17 @@
+Aktualizacja BikeFit Studio Online v2.3
+
+1. Otwórz w GitHubie plik app.py.
+2. Kliknij ikonę ołówka / Edit this file.
+3. Zastąp zawartość nowym plikiem app.py z wersji v2.3.
+4. Kliknij Commit changes.
+5. Poczekaj na automatyczne wdrożenie Streamlit.
+6. W razie potrzeby wybierz Manage app -> Reboot app i odśwież stronę Ctrl+F5.
+
+Zmiany v2.3:
+- naprawiona czytelność i działanie zakładki Wymiary i konfigurator,
+- własne jasne karty ustawień oraz wskazówek,
+- sterowanie animacją bezpośrednio nad rysunkiem,
+- lokalny suwak kadencji 40-130 rpm,
+- wyświetlanie kadencji w rpm oraz obrotach na sekundę,
+- Play/Pauza i Reset bez przeładowywania całej strony,
+- płynniejsza animacja przez przełączanie przygotowanych klatek w przeglądarce.

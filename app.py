@@ -33,7 +33,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v2.2 — MisieK",
+    page_title="BikeFit Studio Online v2.3 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -237,6 +237,39 @@ li[role="option"]:hover, li[role="option"][aria-selected="true"] {background:#31
   color:#f7fbff !important;
 }
 .stButton > button, .stDownloadButton > button {border-radius:12px;font-weight:700;}
+
+/* Zawartość zakładek zawsze aktywna i czytelna, także po animacji/odświeżeniu. */
+[data-testid="stTabs"] [role="tabpanel"] {
+  color:#eef7ff !important;
+  opacity:1 !important;
+  pointer-events:auto !important;
+}
+[data-testid="stTabs"] [role="tabpanel"] [data-stale="true"] {opacity:1 !important;}
+[data-testid="stTabs"] [role="tabpanel"] h1,
+[data-testid="stTabs"] [role="tabpanel"] h2,
+[data-testid="stTabs"] [role="tabpanel"] h3,
+[data-testid="stTabs"] [role="tabpanel"] h4,
+[data-testid="stTabs"] [role="tabpanel"] p,
+[data-testid="stTabs"] [role="tabpanel"] li,
+[data-testid="stTabs"] [role="tabpanel"] strong,
+[data-testid="stTabs"] [role="tabpanel"] [data-testid="stMarkdownContainer"] {
+  color:#eef7ff !important;
+  opacity:1 !important;
+}
+.config-grid {display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:12px 0 18px;}
+.config-card {background:#10202e;border:1px solid #345269;border-radius:16px;padding:18px;color:#eef7ff;}
+.config-card h3 {color:#f5fbff !important;margin:0 0 12px;font-size:1.25rem;}
+.config-row {display:flex;justify-content:space-between;gap:20px;padding:8px 0;border-bottom:1px solid #263d50;color:#b8cad9;}
+.config-row:last-child {border-bottom:0;}
+.config-row b {color:#ffffff !important;white-space:nowrap;}
+.config-note {padding:8px 0;color:#d8e7f3;line-height:1.45;}
+.config-warning {background:#2b2a16;border:1px solid #75661d;color:#ffd54f;padding:14px 16px;border-radius:13px;margin-top:12px;line-height:1.45;}
+.measure-help {background:#0f1e2b;border:1px solid #304d64;border-radius:16px;padding:18px;margin-top:14px;color:#e7f3fc;}
+.measure-help h3 {color:#f5fbff !important;margin-top:0;}
+.measure-help div {padding:7px 0;border-bottom:1px solid #263d50;color:#d8e7f3;}
+.measure-help div:last-child {border-bottom:0;}
+@media (max-width: 900px) {.config-grid{grid-template-columns:1fr}}
+
 @media (max-width: 900px) {.measure-grid{grid-template-columns:1fr 1fr}.hero h1{font-size:1.55rem}}
 </style>
 """
@@ -569,8 +602,9 @@ def render_smooth_animation(
     display_scale_percent: float,
     show_angles: bool,
 ) -> None:
-    """Płynna animacja wykonywana w przeglądarce, bez cyklicznych rerunów Streamlit."""
-    frame_count = 72
+    """Płynna animacja w przeglądarce z lokalnym sterowaniem kadencją."""
+    frame_count = 84
+    # Malejący kąt oznacza obrót zgodny z ruchem wskazówek zegara w widoku z prawej strony.
     phases = [((start_phase - i * 360.0 / frame_count) % 360.0) for i in range(frame_count)]
     frames = [
         render_bike_svg(
@@ -578,27 +612,102 @@ def render_smooth_animation(
         )
         for phase in phases
     ]
-    duration_ms = max(180.0, 60000.0 / max(1.0, float(settings.cadence)) / max(0.1, float(st.session_state.get("animation_speed", 1.0))))
+    initial_rpm = int(round(float(settings.cadence)))
+    speed_multiplier = max(0.1, float(st.session_state.get("animation_speed", 1.0)))
     html_doc = f"""
     <!doctype html><html><head><meta charset='utf-8'>
-    <style>html,body{{margin:0;padding:0;background:transparent;overflow:hidden}}#stage{{width:100%;height:100%}}#stage svg{{display:block;width:100%;height:auto}}</style>
-    </head><body><div id='stage'></div>
+    <style>
+      html,body{{margin:0;padding:0;background:#07131e;overflow:hidden;font-family:Segoe UI,Arial;color:#eef7ff}}
+      #panel{{display:flex;align-items:center;gap:10px;padding:9px 12px;background:#102333;border:1px solid #35546c;border-radius:12px;margin:0 0 8px}}
+      button{{background:#1a3a52;color:#fff;border:1px solid #507590;border-radius:9px;padding:8px 14px;font-weight:700;cursor:pointer}}
+      button:hover{{background:#25506e}}
+      .rpm-wrap{{display:flex;align-items:center;gap:10px;flex:1;min-width:250px}}
+      .rpm-wrap label{{font-size:13px;font-weight:700;color:#bcd0df;white-space:nowrap}}
+      input[type=range]{{width:100%;accent-color:#67e4b5}}
+      #rpmValue{{min-width:78px;text-align:center;padding:7px 10px;border-radius:9px;background:#0b1823;border:1px solid #3c5f77;color:#67e4b5;font-size:15px;font-weight:800}}
+      #rotValue{{min-width:98px;color:#9fb6c8;font-size:12px}}
+      #stage{{position:relative;width:100%;height:610px;background:#07131e;border-radius:16px;overflow:hidden}}
+      .frame{{position:absolute;inset:0;display:none}}
+      .frame.active{{display:block}}
+      .frame svg{{display:block;width:100%;height:100%}}
+      #badge{{position:absolute;right:18px;top:16px;z-index:10;background:rgba(7,19,30,.90);border:1px solid #4a718d;border-radius:12px;padding:9px 13px;color:#fff;font-weight:800;box-shadow:0 5px 18px rgba(0,0,0,.25)}}
+      #badge span{{color:#67e4b5}}
+    </style>
+    </head><body>
+      <div id='panel'>
+        <button id='toggle'>⏸ Pauza</button>
+        <button id='reset'>↺ Reset</button>
+        <div class='rpm-wrap'>
+          <label for='rpm'>Kadencja animacji</label>
+          <input id='rpm' type='range' min='40' max='130' step='1' value='{initial_rpm}'>
+          <div id='rpmValue'>{initial_rpm} rpm</div>
+          <div id='rotValue'></div>
+        </div>
+      </div>
+      <div id='stage'><div id='badge'>Kadencja: <span id='badgeRpm'>{initial_rpm} rpm</span></div></div>
     <script>
-    const frames = {json.dumps(frames, ensure_ascii=False)};
-    const stage = document.getElementById('stage');
-    const duration = {duration_ms:.3f};
-    let lastIndex = -1;
-    const start = performance.now();
-    function tick(now) {{
-      const progress = ((now - start) % duration) / duration;
-      const index = Math.floor(progress * frames.length) % frames.length;
-      if (index !== lastIndex) {{ stage.innerHTML = frames[index]; lastIndex = index; }}
+      const svgFrames = {json.dumps(frames, ensure_ascii=False)};
+      const stage = document.getElementById('stage');
+      stage.insertAdjacentHTML('beforeend', svgFrames.map((svg,i)=>`<div class="frame ${{i===0?'active':''}}" data-i="${{i}}">${{svg}}</div>`).join(''));
+      const nodes = Array.from(stage.querySelectorAll('.frame'));
+      const rpm = document.getElementById('rpm');
+      const rpmValue = document.getElementById('rpmValue');
+      const badgeRpm = document.getElementById('badgeRpm');
+      const rotValue = document.getElementById('rotValue');
+      const toggle = document.getElementById('toggle');
+      const reset = document.getElementById('reset');
+      const speedMultiplier = {speed_multiplier:.3f};
+      let running = true;
+      let currentIndex = 0;
+      let startTime = performance.now();
+      let pausedProgress = 0;
+
+      function durationMs() {{ return 60000 / Math.max(1, Number(rpm.value)) / speedMultiplier; }}
+      function updateRpmText() {{
+        const value = Number(rpm.value);
+        rpmValue.textContent = `${{value}} rpm`;
+        badgeRpm.textContent = `${{value}} rpm`;
+        rotValue.textContent = `${{(value/60).toFixed(2)}} obr./s`;
+      }}
+      function showFrame(index) {{
+        if (index === currentIndex && nodes[index].classList.contains('active')) return;
+        nodes[currentIndex].classList.remove('active');
+        currentIndex = index;
+        nodes[currentIndex].classList.add('active');
+      }}
+      function tick(now) {{
+        if (running) {{
+          const duration = durationMs();
+          const progress = ((now - startTime) % duration) / duration;
+          showFrame(Math.floor(progress * nodes.length) % nodes.length);
+          pausedProgress = progress;
+        }}
+        requestAnimationFrame(tick);
+      }}
+      toggle.addEventListener('click', () => {{
+        running = !running;
+        if (running) {{
+          startTime = performance.now() - pausedProgress * durationMs();
+          toggle.textContent = '⏸ Pauza';
+        }} else {{
+          toggle.textContent = '▶ Play';
+        }}
+      }});
+      reset.addEventListener('click', () => {{
+        pausedProgress = 0;
+        showFrame(0);
+        startTime = performance.now();
+      }});
+      rpm.addEventListener('input', () => {{
+        const phaseProgress = currentIndex / nodes.length;
+        updateRpmText();
+        startTime = performance.now() - phaseProgress * durationMs();
+      }});
+      updateRpmText();
       requestAnimationFrame(tick);
-    }}
-    requestAnimationFrame(tick);
     </script></body></html>
     """
-    components.html(html_doc, height=650, scrolling=False)
+    components.html(html_doc, height=680, scrolling=False)
 
 
 def safe_import_url(url: str, fallback: BikeGeometry) -> tuple[BikeGeometry, list[str]]:
@@ -852,7 +961,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v2.2</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v2.3</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1037,7 +1146,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v2.2</h1>
+  <h1>BikeFit Studio Online v2.3</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1096,26 +1205,36 @@ with main_tab:
     st.info("S75 oznacza środek siodła w miejscu, w którym siodło ma 75 mm szerokości. Animacja działa płynnie w przeglądarce i obraca korbę zgodnie z ruchem wskazówek zegara w widoku z prawej strony roweru.")
 
 with config_tab:
-    left, right = st.columns([1, 1])
-    with left:
-        st.subheader("Aktualne ustawienie")
-        st.write(f"**Wysokość siodła:** {settings.saddle_height:.0f} mm")
-        st.write(f"**Regulacja na szynach:** {settings.saddle_fore_aft:+.0f} mm")
-        st.write(f"**Kierownica — wysokość:** {settings.handlebar_stack_delta:+.0f} mm")
-        st.write(f"**Kierownica — zasięg:** {settings.handlebar_reach_delta:+.0f} mm")
-        st.write(f"**Pochylenie tułowia:** {analysis.torso_angle:.1f}°")
-        st.write(f"**Kąt łokcia:** {analysis.elbow_angle:.1f}°")
-        st.write(f"**Zakres biodra:** {analysis.hip_angle_min:.1f}–{analysis.hip_angle_max:.1f}°")
-    with right:
-        st.subheader("Wskazówki modelu")
-        for note in analysis.messages:
-            st.write(f"• {note}")
-        for note in st.session_state.fit_notes:
-            st.write(f"• {note}")
-        st.warning("Wprowadzaj zmiany na prawdziwym rowerze stopniowo, zwykle po 2–5 mm, i testuj każdą zmianę podczas jazdy.")
-    st.subheader("Jak zmierzyć samą metrówką")
-    for line in measurement_guide(bike, settings):
-        st.write(f"• {line}")
+    setting_rows = [
+        ("Wysokość siodła", f"{settings.saddle_height:.0f} mm"),
+        ("Regulacja siodła na szynach", f"{settings.saddle_fore_aft:+.0f} mm"),
+        ("Kierownica — wysokość", f"{settings.handlebar_stack_delta:+.0f} mm"),
+        ("Kierownica — zasięg", f"{settings.handlebar_reach_delta:+.0f} mm"),
+        ("Pochylenie tułowia", f"{analysis.torso_angle:.1f}°"),
+        ("Kąt łokcia", f"{analysis.elbow_angle:.1f}°"),
+        ("Zakres biodra", f"{analysis.hip_angle_min:.1f}–{analysis.hip_angle_max:.1f}°"),
+    ]
+    rows_html = "".join(
+        f'<div class="config-row"><span>{html.escape(name)}</span><b>{html.escape(value)}</b></div>'
+        for name, value in setting_rows
+    )
+    model_notes = list(analysis.messages) + list(st.session_state.fit_notes)
+    notes_html = "".join(
+        f'<div class="config-note">• {html.escape(str(note))}</div>' for note in model_notes
+    ) or '<div class="config-note">Brak dodatkowych uwag.</div>'
+    guide_html = "".join(
+        f'<div>• {html.escape(str(line))}</div>' for line in measurement_guide(bike, settings)
+    )
+    config_html = f'''
+        <div class="config-grid">
+          <section class="config-card"><h3>Aktualne ustawienie</h3>{rows_html}</section>
+          <section class="config-card"><h3>Wskazówki modelu</h3>{notes_html}
+            <div class="config-warning">Wprowadzaj zmiany na prawdziwym rowerze stopniowo, zwykle po 2–5 mm, i testuj każdą zmianę podczas jazdy.</div>
+          </section>
+        </div>
+        <section class="measure-help"><h3>Jak zmierzyć samą metrówką</h3>{guide_html}</section>
+    '''
+    st.markdown(config_html, unsafe_allow_html=True)
 
 with tire_tab:
     c1, c2, c3 = st.columns(3)
