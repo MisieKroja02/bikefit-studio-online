@@ -1,0 +1,8 @@
+Aktualizacja BikeFit Studio Online v3.6
+
+1. Podmień plik app.py w repozytorium GitHub.
+2. Wykonaj Commit changes.
+3. W razie potrzeby w Streamlit użyj Manage app -> Reboot app.
+
+Zmiana:
+- sekcja „Import geometrii z linku” jest domyślnie zwinięta.

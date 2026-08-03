@@ -1,0 +1,13 @@
+Aktualizacja BikeFit Studio Online v3.7
+
+Podmień dwa pliki w repozytorium aplikacji:
+1. app.py
+2. bikefit/frame_size.py
+
+Następnie wykonaj Commit changes. Streamlit przebuduje aplikację automatycznie.
+W razie potrzeby użyj Manage app -> Reboot app oraz Ctrl+F5.
+
+Najważniejsza poprawka:
+- ocena rozmiaru ramy uwzględnia oznaczenie XS/S/M/L/XL w nazwie geometrii,
+- 155-160 cm na gravelowej ramie M nie może już zostać uznane za rozmiar odpowiedni,
+- ocena nadal aktualizuje się automatycznie po zmianie danych.

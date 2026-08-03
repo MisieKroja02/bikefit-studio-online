@@ -26,3 +26,14 @@ streamlit run app.py
 ```
 
 Autor: MisieK
+
+
+## Zmiana v3.7
+
+- Panel „Import geometrii z linku” jest domyślnie zwinięty i rozwija się dopiero po kliknięciu użytkownika.
+
+
+## Nowości v3.7
+- dodatkowa kontrola oznaczenia rozmiaru XS/S/M/L/XL,
+- poprawna ocena oczywistych niedopasowań, np. 155 cm na ramie M,
+- automatyczna aktualizacja oceny bez ponownej optymalizacji.

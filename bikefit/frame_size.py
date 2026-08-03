@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 
 from .models import BikeGeometry, FitSettings, Rider
 
@@ -32,6 +33,101 @@ class _TargetGeometry:
     stack: float
     reach: float
     seat_tube: float
+
+
+_SIZE_HEIGHT_BANDS: dict[str, dict[str, tuple[float, float]]] = {
+    # Zakresy są celowo szerokie. Służą jako kontrola zdroworozsądkowa
+    # oznaczenia producenta, a nie jako zamiennik tabeli rozmiarów konkretnej marki.
+    "road_gravel": {
+        "XXS": (1420.0, 1570.0),
+        "XS": (1500.0, 1650.0),
+        "S": (1580.0, 1740.0),
+        "M": (1680.0, 1850.0),
+        "L": (1780.0, 1940.0),
+        "XL": (1880.0, 2030.0),
+        "XXL": (1970.0, 2120.0),
+    },
+    "mtb": {
+        "XXS": (1400.0, 1540.0),
+        "XS": (1480.0, 1620.0),
+        "S": (1550.0, 1700.0),
+        "M": (1650.0, 1810.0),
+        "L": (1750.0, 1910.0),
+        "XL": (1850.0, 2010.0),
+        "XXL": (1940.0, 2110.0),
+    },
+    "city": {
+        "XXS": (1420.0, 1570.0),
+        "XS": (1500.0, 1650.0),
+        "S": (1580.0, 1740.0),
+        "M": (1680.0, 1850.0),
+        "L": (1780.0, 1950.0),
+        "XL": (1880.0, 2050.0),
+        "XXL": (1980.0, 2140.0),
+    },
+}
+
+
+def _size_family(bike_type: str) -> str:
+    kind = (bike_type or "").strip().lower()
+    if kind in {"mtb", "mountain"}:
+        return "mtb"
+    if kind in {"trekking", "city", "urban"}:
+        return "city"
+    return "road_gravel"
+
+
+def _extract_named_size(name: str) -> str | None:
+    """Rozpoznaje rozmiar tekstowy zapisany w nazwie geometrii.
+
+    Obsługuje m.in. ``Ghost_Asket_2025_M``, ``KROSS Esker M`` oraz ``size-L``.
+    Kolejność od najdłuższego tokenu chroni przed rozpoznaniem ``XL`` jako ``L``.
+    """
+    normalized = re.sub(r"[^A-Z0-9]+", " ", (name or "").upper()).strip()
+    tokens = normalized.split()
+    for size in ("XXL", "XXS", "XL", "XS", "L", "M", "S"):
+        if size in tokens:
+            return size
+    return None
+
+
+def _named_size_signal(bike: BikeGeometry, rider: Rider) -> tuple[float, float, list[str], list[str]]:
+    """Zwraca dodatkowy sygnał za małej/za dużej ramy z oznaczenia rozmiaru.
+
+    Jest to bezpiecznik dla oczywistych przypadków, np. 155 cm na ramie M.
+    Wewnątrz szerokiego zakresu nie dodaje żadnych punktów.
+    """
+    size = _extract_named_size(bike.name)
+    if not size:
+        return 0.0, 0.0, [], []
+    band = _SIZE_HEIGHT_BANDS[_size_family(bike.bike_type)].get(size)
+    if not band:
+        return 0.0, 0.0, [], []
+
+    low, high = band
+    height = float(rider.height)
+    small_score = 0.0
+    large_score = 0.0
+    small_reasons: list[str] = []
+    large_reasons: list[str] = []
+
+    if height < low:
+        outside = low - height
+        # 30 mm poza zakresem = sygnał graniczny; 100+ mm = silny sygnał.
+        large_score = 1.25 + min(5.0, outside / 28.0)
+        large_reasons.append(
+            f"Geometria jest oznaczona jako rozmiar {size}. Dla wzrostu {height/10:.0f} cm jest to wyraźnie poniżej "
+            f"szerokiego orientacyjnego zakresu tego oznaczenia ({low/10:.0f}–{high/10:.0f} cm)."
+        )
+    elif height > high:
+        outside = height - high
+        small_score = 1.25 + min(5.0, outside / 28.0)
+        small_reasons.append(
+            f"Geometria jest oznaczona jako rozmiar {size}. Dla wzrostu {height/10:.0f} cm jest to powyżej "
+            f"szerokiego orientacyjnego zakresu tego oznaczenia ({low/10:.0f}–{high/10:.0f} cm)."
+        )
+
+    return small_score, large_score, small_reasons, large_reasons
 
 
 def _bike_ratios(bike_type: str) -> tuple[float, float, float]:
@@ -142,6 +238,14 @@ def assess_frame_size(
     small_reasons: list[str] = []
     large_reasons: list[str] = []
 
+    # Oznaczenie rozmiaru (np. M) jest niezależnym bezpiecznikiem dla
+    # oczywistych niedopasowań. Nie wpływa na wynik wewnątrz szerokiego pasma.
+    size_small, size_large, size_small_reasons, size_large_reasons = _named_size_signal(bike, rider)
+    small_score += size_small
+    large_score += size_large
+    small_reasons.extend(size_small_reasons)
+    large_reasons.extend(size_large_reasons)
+
     # Reach jest najsilniejszym sygnałem długości ramy.
     reach_score = _axis_score(reach_delta, neutral=14.0, severe=38.0)
     if reach_delta < -14.0:
@@ -219,7 +323,8 @@ def assess_frame_size(
     difference = abs(small_score - large_score)
 
     # Szeroka strefa neutralna — korekty kokpitu nie wystarczą, by ją opuścić.
-    if dominant < 1.55 or difference < 0.75:
+    strong_named_mismatch = max(size_small, size_large) >= 2.5
+    if (dominant < 1.55 or difference < 0.75) and not strong_named_mismatch:
         return FrameSizeAssessment(
             status="good",
             title="Rozmiar ramy wygląda odpowiednio",

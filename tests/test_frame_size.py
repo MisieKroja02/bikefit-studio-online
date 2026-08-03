@@ -77,3 +77,44 @@ def test_assessment_changes_immediately_when_rider_height_changes():
     assert short.status in {"borderline_large", "too_large"}
     assert medium.status == "good"
     assert tall.status in {"borderline_small", "too_small"}
+
+
+def ghost_asket_m():
+    # Typowa geometria gravel M; testuje również rozmiar zakodowany w nazwie.
+    return BikeGeometry(
+        name="Ghost_Asket CF Pro_2025_M",
+        bike_type="Gravel",
+        stack=555.0,
+        reach=385.0,
+        seat_tube_length=500.0,
+    )
+
+
+def test_named_m_gravel_is_not_accepted_for_155_cm():
+    result = assess_frame_size(
+        ghost_asket_m(),
+        rider(1550.0, 721.0, "Ograniczona"),
+        FitSettings(style="Komfortowa", handlebar_stack_delta=16.0, handlebar_reach_delta=-4.0),
+    )
+    assert result.status == "too_large"
+    assert result.large_score > result.small_score
+    assert any("rozmiar M" in reason for reason in result.reasons)
+
+
+def test_named_m_gravel_is_not_accepted_for_160_cm():
+    result = assess_frame_size(
+        ghost_asket_m(),
+        rider(1600.0, 744.0, "Ograniczona"),
+        FitSettings(style="Komfortowa", handlebar_stack_delta=28.0, handlebar_reach_delta=6.0),
+    )
+    assert result.status in {"borderline_large", "too_large"}
+    assert result.large_score > result.small_score
+
+
+def test_named_m_gravel_remains_good_near_178_cm():
+    result = assess_frame_size(
+        ghost_asket_m(),
+        rider(1780.0, 828.0, "Ograniczona"),
+        FitSettings(style="Komfortowa"),
+    )
+    assert result.status == "good"
