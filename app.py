@@ -31,9 +31,11 @@ from bikefit.tire_pressure import (
 ROOT = Path(__file__).resolve().parent
 BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
+COUNTER_DOMAIN = "bikefitstudio.streamlit.app"
+COUNTER_API = "https://visitor.6developer.com/visit"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v2.7 — MisieK",
+    page_title="BikeFit Studio Online v2.8 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -363,6 +365,87 @@ GEOMETRY_FIELDS = [
     ("Zasięg do chwytu [mm]", "hood_reach", 0.5),
     ("Długość korby [mm]", "crank_length", 0.5),
 ]
+
+
+def record_visitor_once() -> None:
+    """Rejestruje jedno wejście na sesję przeglądarki przez zewnętrzny licznik."""
+    if bool(st.session_state.get("visitor_counter_recorded", False)):
+        return
+    safe_domain = html.escape(COUNTER_DOMAIN, quote=True)
+    safe_api = html.escape(COUNTER_API, quote=True)
+    components.html(
+        f"""
+        <script>
+        (() => {{
+          fetch('{safe_api}', {{
+            method: 'POST',
+            headers: {{'Content-Type': 'application/json'}},
+            body: JSON.stringify({{
+              domain: '{safe_domain}',
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              page_path: '/',
+              page_title: 'BikeFit Studio Online',
+              referrer: ''
+            }})
+          }}).catch(() => {{}});
+        }})();
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
+    st.session_state.visitor_counter_recorded = True
+
+
+def render_visitor_counter() -> None:
+    """Wyświetla łączną liczbę odwiedzin i liczbę wejść dzisiaj w stopce."""
+    safe_domain = html.escape(COUNTER_DOMAIN, quote=True)
+    safe_api = html.escape(COUNTER_API, quote=True)
+    components.html(
+        f"""
+        <!doctype html>
+        <html lang="pl">
+        <head>
+          <meta charset="utf-8">
+          <style>
+            html, body {{ margin:0; padding:0; background:transparent; font-family:Segoe UI,Arial,sans-serif; }}
+            .counter {{
+              box-sizing:border-box; width:100%; display:flex; justify-content:center; align-items:center;
+              gap:10px; color:#9db3c7; font-size:13px; line-height:1.2; padding:8px 10px;
+            }}
+            .pill {{
+              display:inline-flex; align-items:center; gap:7px; padding:7px 12px; border-radius:999px;
+              background:#102131; border:1px solid #35536b; color:#eaf5ff;
+              box-shadow:0 4px 14px rgba(0,0,0,.15);
+            }}
+            .value {{ color:#67e4b5; font-weight:800; font-size:15px; }}
+            .today {{ color:#8fb6d4; }}
+            .error {{ color:#8198aa; }}
+          </style>
+        </head>
+        <body>
+          <div class="counter">
+            <div class="pill" id="counter">👥 Odwiedziny: <span class="value">—</span></div>
+          </div>
+          <script>
+          (() => {{
+            const node = document.getElementById('counter');
+            fetch('{safe_api}?domain=' + encodeURIComponent('{safe_domain}'))
+              .then(r => {{ if (!r.ok) throw new Error('counter'); return r.json(); }})
+              .then(data => {{
+                const total = new Intl.NumberFormat('pl-PL').format(Number(data.totalCount || 0));
+                const today = new Intl.NumberFormat('pl-PL').format(Number(data.todayCount || 0));
+                node.innerHTML = '👥 Odwiedziny: <span class="value">' + total + '</span><span class="today">• dzisiaj: ' + today + '</span>';
+              }})
+              .catch(() => {{ node.innerHTML = '<span class="error">👥 Licznik chwilowo niedostępny</span>'; }});
+          }})();
+          </script>
+        </body>
+        </html>
+        """,
+        height=52,
+        scrolling=False,
+    )
 
 
 def external_link_button(label: str, url: str) -> None:
@@ -1054,7 +1137,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v2.7</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v2.8</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1065,6 +1148,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
 
 
 init_state()
+record_visitor_once()
 apply_pending_profile_payload()
 sanitize_numeric_state()
 profile_login_gate()
@@ -1267,7 +1351,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v2.7</h1>
+  <h1>BikeFit Studio Online v2.8</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1543,6 +1627,7 @@ with report_tab:
         except Exception as exc:
             st.error(f"Nie udało się wczytać profilu: {exc}")
 
+render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny</div>
+<div class="footer-note">BikeFit Studio Online v2.8 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik zewnętrzny, bez cookies.</span></div>
 """, unsafe_allow_html=True)

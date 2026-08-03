@@ -1,0 +1,15 @@
+Aktualizacja BikeFit Studio Online v2.8
+
+1. W repozytorium GitHub otwórz plik app.py.
+2. Kliknij ikonę ołówka / Edit this file.
+3. Podmień całą zawartość na app.py z wersji v2.8.
+4. Kliknij Commit changes.
+5. W Streamlit w razie potrzeby wybierz Manage app -> Reboot app.
+6. Odśwież stronę przez Ctrl+F5.
+
+Nowość:
+- licznik odwiedzin w stopce,
+- liczba wszystkich odwiedzin i odwiedzin dzisiejszych,
+- jedno naliczenie na sesję aplikacji; zewnętrzna usługa ogranicza duplikaty.
+
+Nie trzeba dodawać tokenu ani konfigurować GitHuba/Secrets.
