@@ -1,4 +1,4 @@
-# BikeFit Studio Online v3.0
+# BikeFit Studio Online v3.1
 
 Internetowy konfigurator pozycji na rowerze. Autor: **MisieK**.
 
@@ -17,7 +17,7 @@ Internetowy konfigurator pozycji na rowerze. Autor: **MisieK**.
 - raport HTML oraz kopia profilu JSON,
 - licznik odwiedzin w stopce.
 
-## Zmiany v3.0
+## Zmiany v3.1
 
 - neutralne dane startowe: 175 cm, 75 kg, przekrok 810 mm,
 - domyślna geometria demonstracyjna Gravel M,
@@ -66,3 +66,10 @@ Pakiet zawiera testy silnika biomechanicznego, importera, kalkulatora opon, wsp�
 ## Zastrzeżenie
 
 Program jest narzędziem orientacyjnym. Nie zastępuje profesjonalnego bike fittingu, fizjoterapeuty ani diagnostyki medycznej.
+
+## Nowości v3.1
+
+- import geometrii działa dwuetapowo: najpierw pobranie danych, potem sprawdzenie i zapis,
+- przed zapisaniem można wpisać własną nazwę geometrii,
+- nazwa pojawia się na wspólnej liście rowerów zamiast tytułu strony lub adresu URL,
+- zapis pod istniejącą nazwą aktualizuje daną geometrię, a nowa nazwa tworzy nową pozycję.

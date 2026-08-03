@@ -46,7 +46,7 @@ COUNTER_NAMESPACE = "misiek-bikefit-studio-online"
 COUNTER_API_BASE = "https://api.counterapi.dev/v1"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v3.0 — MisieK",
+    page_title="BikeFit Studio Online v3.1 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -476,6 +476,20 @@ def remember_geometry_in_session(bike: BikeGeometry) -> None:
     ] + [payload]
 
 
+def clean_geometry_name(value: object, fallback: str = "Nowa geometria") -> str:
+    """Zwraca krótką, czytelną nazwę geometrii do wspólnej bazy."""
+    name = " ".join(str(value or "").strip().split())
+    if not name:
+        name = " ".join(str(fallback or "Nowa geometria").strip().split())
+    # Chroni listę wyboru przed bardzo długimi tytułami stron lub pełnymi URL-ami.
+    return name[:120]
+
+
+def imported_geometry_with_name(payload: dict[str, object], name: object) -> BikeGeometry:
+    bike = BikeGeometry.from_dict(payload)
+    return replace(bike, name=clean_geometry_name(name, bike.name))
+
+
 def external_link_button(label: str, url: str) -> None:
     """Renderuje niezawodny ciemny przycisk-link niezależny od motywu Streamlit."""
     safe_label = html.escape(label)
@@ -592,6 +606,10 @@ def init_state() -> None:
         "sidebar_import_url": "",
         "sidebar_import_status": "",
         "sidebar_import_notes": [],
+        "sidebar_import_custom_name": "",
+        "sidebar_import_preview_name": "",
+        "pending_import_geometry": None,
+        "pending_import_notes": [],
         "fit_action_status": "",
         "fit_action_error": False,
         "pending_profile_payload": None,
@@ -1208,7 +1226,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v3.0</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v3.1</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1255,7 +1273,7 @@ with st.sidebar:
         st.session_state.geometry_for = current_name
 
     with st.expander("🌐 Import geometrii z linku", expanded=True):
-        st.caption("Tak jak w wersji desktopowej: otwórz katalog, wybierz dokładny model, rocznik i rozmiar, a potem wklej adres strony roweru.")
+        st.caption("Otwórz katalog, wybierz dokładny model, rocznik i rozmiar, a następnie wklej adres strony. Po pobraniu możesz wpisać własną nazwę geometrii przed zapisaniem.")
         external_link_button("Otwórz Bike Insights", "https://bikeinsights.com/search")
         external_link_button("Otwórz Geometry Geeks", "https://geometrygeeks.bike/")
         external_link_button("Otwórz Bike-Stats", "https://www.bike-stats.de/en/")
@@ -1265,7 +1283,15 @@ with st.sidebar:
             placeholder="https://...",
             help="Wklej adres strony zawierającej tabelę geometrii konkretnego rozmiaru ramy.",
         )
-        if st.button("Pobierz i zastosuj geometrię", key="import_geometry_sidebar", use_container_width=True, type="primary"):
+        st.text_input(
+            "Proponowana nazwa geometrii (opcjonalnie)",
+            key="sidebar_import_custom_name",
+            placeholder="np. KROSS Esker 7.0 2025 M",
+            help="Możesz wpisać nazwę już teraz albo poprawić ją po pobraniu danych.",
+            max_chars=120,
+        )
+
+        if st.button("Pobierz geometrię", key="import_geometry_sidebar", use_container_width=True, type="primary"):
             import_url = str(st.session_state.sidebar_import_url).strip()
             if not import_url:
                 st.session_state.sidebar_import_status = "Wklej najpierw adres strony z geometrią."
@@ -1274,21 +1300,75 @@ with st.sidebar:
                 try:
                     with st.spinner("Pobieram stronę i rozpoznaję geometrię…"):
                         imported, notes = safe_import_url(import_url, geometry_from_state(base_bike))
+                    suggested_name = clean_geometry_name(
+                        st.session_state.sidebar_import_custom_name, imported.name
+                    )
+                    st.session_state.pending_import_geometry = imported.to_dict()
+                    st.session_state.pending_import_notes = list(notes)
+                    st.session_state.sidebar_import_preview_name = suggested_name
+                    st.session_state.sidebar_import_status = "Geometria pobrana. Sprawdź nazwę i zapisz ją poniżej."
+                    st.session_state.sidebar_import_notes = []
+                    st.rerun()
+                except Exception as exc:
+                    st.session_state.pending_import_geometry = None
+                    st.session_state.pending_import_notes = []
+                    st.session_state.sidebar_import_status = f"Import nie powiódł się: {exc}"
+                    st.session_state.sidebar_import_notes = []
+
+        pending_import = st.session_state.get("pending_import_geometry")
+        if pending_import:
+            st.markdown("##### Sprawdź przed zapisaniem")
+            st.text_input(
+                "Nazwa zapisywanej geometrii",
+                key="sidebar_import_preview_name",
+                max_chars=120,
+                help="Ta nazwa pojawi się na liście rowerów u wszystkich użytkowników wspólnej bazy.",
+            )
+            preview_bike = imported_geometry_with_name(
+                pending_import, st.session_state.sidebar_import_preview_name
+            )
+            st.caption(
+                f"{preview_bike.bike_type} • Stack {preview_bike.stack:.0f} mm • "
+                f"Reach {preview_bike.reach:.0f} mm • korba {preview_bike.crank_length:.1f} mm"
+            )
+            save_col, cancel_col = st.columns([2, 1])
+            if save_col.button(
+                "Zapisz i zastosuj",
+                key="save_imported_geometry",
+                use_container_width=True,
+                type="primary",
+            ):
+                final_name = clean_geometry_name(
+                    st.session_state.sidebar_import_preview_name, preview_bike.name
+                )
+                if not final_name.strip():
+                    st.warning("Wpisz nazwę geometrii.")
+                else:
+                    imported = replace(preview_bike, name=final_name)
                     remember_geometry_in_session(imported)
-                    saved_globally, save_message = persist_shared_geometry(
+                    _saved_globally, save_message = persist_shared_geometry(
                         imported, str(st.session_state.user_alias)
                     )
                     st.session_state.selected_bike = imported.name
                     reset_geometry_state(imported)
                     st.session_state.geometry_for = imported.name
-                    st.session_state.sidebar_import_status = f"Zaimportowano: {imported.name}. {save_message}"
-                    st.session_state.sidebar_import_notes = notes
+                    st.session_state.sidebar_import_status = f"Zapisano: {imported.name}. {save_message}"
+                    st.session_state.sidebar_import_notes = list(
+                        st.session_state.get("pending_import_notes", [])
+                    )
+                    st.session_state.pending_import_geometry = None
+                    st.session_state.pending_import_notes = []
                     st.rerun()
-                except Exception as exc:
-                    st.session_state.sidebar_import_status = f"Import nie powiódł się: {exc}"
-                    st.session_state.sidebar_import_notes = []
+            if cancel_col.button(
+                "Anuluj", key="cancel_imported_geometry", use_container_width=True
+            ):
+                st.session_state.pending_import_geometry = None
+                st.session_state.pending_import_notes = []
+                st.session_state.sidebar_import_status = "Anulowano zapis pobranej geometrii."
+                st.rerun()
+
         if st.session_state.sidebar_import_status:
-            if st.session_state.sidebar_import_status.startswith("Zaimportowano"):
+            if st.session_state.sidebar_import_status.startswith(("Zapisano", "Geometria pobrana")):
                 st.success(st.session_state.sidebar_import_status)
             else:
                 st.warning(st.session_state.sidebar_import_status)
@@ -1434,7 +1514,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v3.0</h1>
+  <h1>BikeFit Studio Online v3.1</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1723,5 +1803,5 @@ with report_tab:
 
 render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online v3.0 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
+<div class="footer-note">BikeFit Studio Online v3.1 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
 """, unsafe_allow_html=True)

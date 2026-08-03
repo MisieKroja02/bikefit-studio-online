@@ -1,5 +1,5 @@
 KONFIGURACJA TRWAŁEJ WSPÓLNEJ BAZY GEOMETRII
-BikeFit Studio Online v3.0
+BikeFit Studio Online v3.1
 
 Po wykonaniu tej konfiguracji geometria dodana przez jedną osobę będzie dostępna
 na liście u pozostałych osób także po odświeżeniu i ponownym uruchomieniu aplikacji.

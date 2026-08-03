@@ -1,0 +1,14 @@
+Aktualizacja BikeFit Studio Online v3.1
+
+Najprostsza metoda:
+1. Otwórz w repozytorium plik app.py.
+2. Kliknij Edit / ikonę ołówka.
+3. Podmień zawartość na app.py z wersji v3.1.
+4. Kliknij Commit changes.
+5. W Streamlit użyj Manage app -> Reboot app, jeżeli aktualizacja nie pojawi się automatycznie.
+6. Odśwież stronę skrótem Ctrl+F5.
+
+Nowość:
+Po pobraniu geometrii z linku aplikacja pokazuje pole „Nazwa zapisywanej geometrii”. Wpisana tam nazwa trafia na listę rowerów. Dzięki temu na liście nie pojawia się tytuł strony ani pełny link.
+
+Trwałe zapamiętywanie geometrii dla wszystkich użytkowników wymaga skonfigurowanej wspólnej bazy zgodnie z plikiem KONFIGURACJA_WSPOLNEJ_BAZY.txt.
