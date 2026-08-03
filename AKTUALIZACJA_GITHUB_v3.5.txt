@@ -1,0 +1,17 @@
+AKTUALIZACJA BIKEFIT STUDIO ONLINE DO v3.5
+
+Podmień na GitHubie dwa pliki:
+1. app.py
+2. bikefit/frame_size.py
+
+Następnie wykonaj Commit changes. Streamlit wdroży zmianę automatycznie.
+W razie potrzeby: Manage app -> Reboot app, potem Ctrl+F5.
+
+Zmiany:
+- przebudowana ocena rozmiaru ramy,
+- geometria ma pierwszeństwo przed korektami optimizera,
+- automatyczna aktualizacja oceny po każdej zmianie parametrów,
+- testy kontrolne KROSS Esker M:
+  160 cm -> za duża,
+  178 cm -> odpowiednia,
+  190 cm -> za mała / granicznie za mała.

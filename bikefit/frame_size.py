@@ -27,18 +27,97 @@ class FrameSizeAssessment:
         }.get(self.status, "#9db3c7")
 
 
-def _positive(value: float) -> float:
-    return max(0.0, float(value))
+@dataclass(frozen=True)
+class _TargetGeometry:
+    stack: float
+    reach: float
+    seat_tube: float
 
 
-def _cockpit_limits(bike_type: str) -> tuple[float, float, float, float]:
-    """Zwraca orientacyjne granice korekt: reach+, reach-, stack+, stack-."""
-    kind = (bike_type or "").lower()
+def _bike_ratios(bike_type: str) -> tuple[float, float, float]:
+    """Zwraca bazowe proporcje: stack/wzrost, reach/wzrost, rura/przekrok.
+
+    Są to orientacyjne środki zakresów używane wyłącznie do porównania
+    sąsiednich rozmiarów. Nie zastępują tabeli producenta.
+    """
+    kind = (bike_type or "").strip().lower()
+    if kind in {"road", "szosa"}:
+        return 0.305, 0.215, 0.610
     if kind in {"mtb", "mountain"}:
-        return 30.0, 30.0, 40.0, 40.0
+        return 0.342, 0.245, 0.505
     if kind in {"trekking", "city", "urban"}:
-        return 25.0, 25.0, 35.0, 35.0
-    return 22.0, 22.0, 32.0, 32.0
+        return 0.350, 0.214, 0.625
+    if kind in {"tt", "triathlon"}:
+        return 0.286, 0.226, 0.600
+    # Gravel / przełaj.
+    return 0.313, 0.211, 0.620
+
+
+def _target_geometry(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> _TargetGeometry:
+    height = max(1400.0, float(rider.height))
+    inseam = max(600.0, float(rider.inseam))
+    stack_ratio, reach_ratio, seat_ratio = _bike_ratios(bike.bike_type)
+
+    # Dłuższe nogi zwykle oznaczają relatywnie krótszy tułów: trochę większy
+    # docelowy stack i trochę mniejszy reach. Krótsze nogi działają odwrotnie.
+    expected_inseam = height * 0.465
+    leg_delta = inseam - expected_inseam
+
+    target_stack = height * stack_ratio + leg_delta * 0.34
+    target_reach = height * reach_ratio - leg_delta * 0.22
+    target_seat_tube = inseam * seat_ratio
+
+    style = (settings.style or "Zrównoważona").lower()
+    if style.startswith("komfort"):
+        target_stack += 15.0
+        target_reach -= 6.0
+    elif style.startswith("sport"):
+        target_stack -= 12.0
+        target_reach += 5.0
+
+    flexibility = (rider.flexibility or "Średnia").lower()
+    if flexibility.startswith("ogran"):
+        target_stack += 8.0
+        target_reach -= 3.0
+    elif flexibility.startswith("dobra"):
+        target_stack -= 4.0
+        target_reach += 2.0
+
+    return _TargetGeometry(target_stack, target_reach, target_seat_tube)
+
+
+def _axis_score(delta: float, neutral: float, severe: float) -> float:
+    """Punktacja różnicy wymiaru; znak określa kierunek rozmiaru.
+
+    delta > 0: geometria większa od celu. delta < 0: geometria mniejsza.
+    """
+    magnitude = abs(float(delta))
+    if magnitude <= neutral:
+        return 0.0
+    if magnitude >= severe:
+        return 3.0 + (magnitude - severe) / max(20.0, severe)
+    return 0.65 + 2.35 * (magnitude - neutral) / (severe - neutral)
+
+
+def _append_axis_reason(
+    *,
+    delta: float,
+    value: float,
+    target: float,
+    label: str,
+    small_reasons: list[str],
+    large_reasons: list[str],
+) -> None:
+    if delta < 0:
+        small_reasons.append(
+            f"{label} ramy wynosi {value:.0f} mm, a orientacyjny środek zakresu dla tych danych to około {target:.0f} mm. "
+            "Rama jest w tym wymiarze mniejsza od punktu odniesienia."
+        )
+    elif delta > 0:
+        large_reasons.append(
+            f"{label} ramy wynosi {value:.0f} mm, a orientacyjny środek zakresu dla tych danych to około {target:.0f} mm. "
+            "Rama jest w tym wymiarze większa od punktu odniesienia."
+        )
 
 
 def assess_frame_size(
@@ -46,121 +125,115 @@ def assess_frame_size(
     rider: Rider,
     settings: FitSettings,
 ) -> FrameSizeAssessment:
-    """Orientacyjnie ocenia rozmiar ramy na podstawie geometrii i wymaganych korekt.
+    """Ocena rozmiaru ramy aktualizowana bezpośrednio z danych użytkownika.
 
-    Najsilniejszym sygnałem są duże korekty wysokości i zasięgu kierownicy.
-    Dodatkowo uwzględniana jest ekspozycja sztycy oraz relacja stack/reach do wzrostu.
-    Wynik nie zastępuje tabeli producenta ani jazdy próbnej.
+    Najpierw analizowana jest sama geometria (stack, reach i rura podsiodłowa)
+    względem wzrostu i przekroku. Korekty kokpitu są tylko sygnałem pomocniczym
+    i nie mogą samodzielnie zmienić dobrze dobranej ramy w "za dużą" lub "za małą".
     """
 
-    reach_pos_limit, reach_neg_limit, stack_pos_limit, stack_neg_limit = _cockpit_limits(bike.bike_type)
+    target = _target_geometry(bike, rider, settings)
+    stack_delta = float(bike.stack) - target.stack
+    reach_delta = float(bike.reach) - target.reach
+    seat_delta = float(bike.seat_tube_length) - target.seat_tube
+
     small_score = 0.0
     large_score = 0.0
     small_reasons: list[str] = []
     large_reasons: list[str] = []
 
-    reach_delta = float(settings.handlebar_reach_delta)
-    stack_delta = float(settings.handlebar_stack_delta)
-
-    if reach_delta > reach_pos_limit:
-        strength = 1.5 + _positive(reach_delta - reach_pos_limit) / 18.0
-        small_score += strength
-        small_reasons.append(
-            f"Aby uzyskać właściwy zasięg, program wydłuża kokpit o {reach_delta:+.0f} mm. "
-            "Duża dodatnia korekta często oznacza zbyt krótką ramę."
+    # Reach jest najsilniejszym sygnałem długości ramy.
+    reach_score = _axis_score(reach_delta, neutral=14.0, severe=38.0)
+    if reach_delta < -14.0:
+        small_score += reach_score * 1.15
+        _append_axis_reason(
+            delta=reach_delta, value=bike.reach, target=target.reach, label="Reach",
+            small_reasons=small_reasons, large_reasons=large_reasons,
         )
-    elif reach_delta < -reach_neg_limit:
-        strength = 1.5 + _positive(-reach_delta - reach_neg_limit) / 18.0
-        large_score += strength
-        large_reasons.append(
-            f"Aby uzyskać właściwy zasięg, program skraca kokpit o {reach_delta:+.0f} mm. "
-            "Duża ujemna korekta często oznacza zbyt długą ramę."
+    elif reach_delta > 14.0:
+        large_score += reach_score * 1.15
+        _append_axis_reason(
+            delta=reach_delta, value=bike.reach, target=target.reach, label="Reach",
+            small_reasons=small_reasons, large_reasons=large_reasons,
         )
 
-    if stack_delta > stack_pos_limit:
-        strength = 1.2 + _positive(stack_delta - stack_pos_limit) / 22.0
-        small_score += strength
-        small_reasons.append(
-            f"Kierownicę trzeba podnieść o {stack_delta:+.0f} mm. Rama może mieć za niski stack dla tej osoby i wybranego stylu."
+    stack_score = _axis_score(stack_delta, neutral=22.0, severe=55.0)
+    if stack_delta < -22.0:
+        small_score += stack_score
+        _append_axis_reason(
+            delta=stack_delta, value=bike.stack, target=target.stack, label="Stack",
+            small_reasons=small_reasons, large_reasons=large_reasons,
         )
-    elif stack_delta < -stack_neg_limit:
-        strength = 1.2 + _positive(-stack_delta - stack_neg_limit) / 22.0
-        large_score += strength
-        large_reasons.append(
-            f"Kierownicę trzeba obniżyć o {stack_delta:+.0f} mm. Rama może mieć za wysoki stack."
-        )
-
-    # Orientacyjna ekspozycja sztycy: wysokość siodła minus długość rury podsiodłowej.
-    # To sygnał pomocniczy, bo nowoczesne ramy mogą mieć mocno opadającą rurę górną.
-    seatpost_exposure = float(settings.saddle_height) - float(bike.seat_tube_length)
-    if seatpost_exposure > 255.0:
-        small_score += min(1.2, (seatpost_exposure - 235.0) / 55.0)
-        small_reasons.append(
-            f"Orientacyjna ekspozycja sztycy wynosi około {seatpost_exposure:.0f} mm. "
-            "Bardzo duża wartość może wskazywać na małą ramę, choć zależy od konstrukcji ramy."
-        )
-    elif seatpost_exposure < 105.0:
-        large_score += min(1.2, (125.0 - seatpost_exposure) / 45.0)
-        large_reasons.append(
-            f"Orientacyjna ekspozycja sztycy wynosi tylko około {seatpost_exposure:.0f} mm. "
-            "Mały zapas może wskazywać na dużą ramę lub ograniczoną możliwość obniżenia siodła."
+    elif stack_delta > 22.0:
+        large_score += stack_score
+        _append_axis_reason(
+            delta=stack_delta, value=bike.stack, target=target.stack, label="Stack",
+            small_reasons=small_reasons, large_reasons=large_reasons,
         )
 
-    # Niezależny, słabszy sygnał proporcji samej ramy do wzrostu.
-    height = max(1.0, float(rider.height))
-    stack_ratio = float(bike.stack) / height
-    reach_ratio = float(bike.reach) / height
-    kind = (bike.bike_type or "").lower()
-    if kind in {"mtb", "mountain"}:
-        stack_low, stack_high = 0.325, 0.375
-        reach_low, reach_high = 0.225, 0.270
-    elif kind in {"trekking", "city", "urban"}:
-        stack_low, stack_high = 0.325, 0.375
-        reach_low, reach_high = 0.195, 0.235
-    else:
-        stack_low, stack_high = 0.295, 0.345
-        reach_low, reach_high = 0.195, 0.235
-
-    if reach_ratio < reach_low - 0.008:
-        small_score += 0.7
-        small_reasons.append(
-            f"Reach ramy ({bike.reach:.0f} mm) jest krótki względem wzrostu {rider.height:.0f} mm."
+    seat_score = _axis_score(seat_delta, neutral=24.0, severe=58.0)
+    if seat_delta < -24.0:
+        small_score += seat_score * 0.8
+        _append_axis_reason(
+            delta=seat_delta, value=bike.seat_tube_length, target=target.seat_tube,
+            label="Rura podsiodłowa", small_reasons=small_reasons, large_reasons=large_reasons,
         )
-    elif reach_ratio > reach_high + 0.008:
-        large_score += 0.7
-        large_reasons.append(
-            f"Reach ramy ({bike.reach:.0f} mm) jest długi względem wzrostu {rider.height:.0f} mm."
+    elif seat_delta > 24.0:
+        large_score += seat_score * 0.8
+        _append_axis_reason(
+            delta=seat_delta, value=bike.seat_tube_length, target=target.seat_tube,
+            label="Rura podsiodłowa", small_reasons=small_reasons, large_reasons=large_reasons,
         )
 
-    if stack_ratio < stack_low - 0.010:
-        small_score += 0.5
-        small_reasons.append(
-            f"Stack ramy ({bike.stack:.0f} mm) jest niski względem wzrostu i może wymagać wielu podkładek."
-        )
-    elif stack_ratio > stack_high + 0.010:
-        large_score += 0.5
-        large_reasons.append(
-            f"Stack ramy ({bike.stack:.0f} mm) jest wysoki względem wzrostu i może ograniczać możliwość obniżenia kierownicy."
-        )
+    # Korekty położenia kierownicy wyłącznie wzmacniają kierunek, który wynika
+    # już z wymiarów ramy. Dzięki temu optimizer nie oznaczy poprawnej ramy jako
+    # za dużej tylko dlatego, że wybrał nietypową korektę kokpitu.
+    cockpit_reach = float(settings.handlebar_reach_delta)
+    cockpit_stack = float(settings.handlebar_stack_delta)
+    geometry_direction = "small" if small_score > large_score else "large" if large_score > small_score else "neutral"
+
+    if geometry_direction == "small":
+        if cockpit_reach > 24.0:
+            small_score += min(0.7, (cockpit_reach - 20.0) / 45.0)
+            small_reasons.append(
+                f"Dodatkowo kokpit trzeba wydłużyć o {cockpit_reach:+.0f} mm, co potwierdza krótki zasięg ramy."
+            )
+        if cockpit_stack > 38.0:
+            small_score += min(0.55, (cockpit_stack - 34.0) / 55.0)
+            small_reasons.append(
+                f"Kierownicę trzeba podnieść o {cockpit_stack:+.0f} mm, co wspiera ocenę niskiego stacku."
+            )
+    elif geometry_direction == "large":
+        if cockpit_reach < -24.0:
+            large_score += min(0.7, (-cockpit_reach - 20.0) / 45.0)
+            large_reasons.append(
+                f"Dodatkowo kokpit trzeba skrócić o {abs(cockpit_reach):.0f} mm, co potwierdza długi zasięg ramy."
+            )
+        if cockpit_stack < -38.0:
+            large_score += min(0.55, (-cockpit_stack - 34.0) / 55.0)
+            large_reasons.append(
+                f"Kierownicę trzeba obniżyć o {abs(cockpit_stack):.0f} mm, co wspiera ocenę wysokiego stacku."
+            )
 
     dominant = max(small_score, large_score)
     difference = abs(small_score - large_score)
 
-    if dominant < 1.35 or difference < 0.55:
+    # Szeroka strefa neutralna — korekty kokpitu nie wystarczą, by ją opuścić.
+    if dominant < 1.55 or difference < 0.75:
         return FrameSizeAssessment(
             status="good",
             title="Rozmiar ramy wygląda odpowiednio",
             summary=(
-                "Wymagane korekty kokpitu mieszczą się w rozsądnym zakresie. Nie ma wyraźnego sygnału, "
-                "że rama jest za mała lub za duża."
+                "Stack, reach i wysokość części podsiodłowej mieszczą się w orientacyjnym zakresie dla podanego wzrostu i przekroku."
             ),
             reasons=(
-                f"Korekta wysokości kierownicy: {stack_delta:+.0f} mm; korekta zasięgu: {reach_delta:+.0f} mm.",
-                f"Orientacyjna ekspozycja sztycy: {seatpost_exposure:.0f} mm.",
+                f"Stack: {bike.stack:.0f} mm (punkt odniesienia około {target.stack:.0f} mm).",
+                f"Reach: {bike.reach:.0f} mm (punkt odniesienia około {target.reach:.0f} mm).",
+                f"Rura podsiodłowa: {bike.seat_tube_length:.0f} mm (punkt odniesienia około {target.seat_tube:.0f} mm).",
             ),
             suggestion=(
-                "Pozostań przy tym rozmiarze i dopracuj ustawienie mostkiem, podkładkami oraz położeniem siodła. "
-                "Dla pewności porównaj też tabelę producenta i wykonaj jazdę próbną."
+                "Pozostań przy tym rozmiarze i dopracuj pozycję położeniem siodła, mostkiem i podkładkami. "
+                "Dla pewności porównaj tabelę producenta i wykonaj jazdę próbną."
             ),
             confidence="umiarkowana",
             small_score=small_score,
@@ -168,34 +241,34 @@ def assess_frame_size(
         )
 
     direction_small = small_score > large_score
-    if dominant >= 3.0 and difference >= 1.0:
+    if dominant >= 4.0 and difference >= 1.15:
         status = "too_small" if direction_small else "too_large"
         title = "Rama jest prawdopodobnie za mała" if direction_small else "Rama jest prawdopodobnie za duża"
         summary = (
-            "Aby osiągnąć docelową pozycję, potrzebne są duże korekty w kierunku wydłużenia lub podniesienia kokpitu."
+            "Kilka podstawowych wymiarów ramy jest mniejszych niż orientacyjny zakres dla tej osoby."
             if direction_small
-            else "Aby osiągnąć docelową pozycję, potrzebne są duże korekty w kierunku skrócenia lub obniżenia kokpitu."
+            else "Kilka podstawowych wymiarów ramy jest większych niż orientacyjny zakres dla tej osoby."
         )
         suggestion = (
-            "Sprawdź ten sam model o jeden rozmiar większy. Porównaj przede wszystkim stack i reach; większa rama zwykle zwiększa oba wymiary."
+            "Sprawdź ten sam model o jeden rozmiar większy i porównaj przede wszystkim stack oraz reach."
             if direction_small
-            else "Sprawdź ten sam model o jeden rozmiar mniejszy. Szukaj mniejszego reachu i niższego stacku, aby ograniczyć skrajne korekty."
+            else "Sprawdź ten sam model o jeden rozmiar mniejszy i porównaj przede wszystkim stack oraz reach."
         )
         confidence = "podwyższona"
     else:
         status = "borderline_small" if direction_small else "borderline_large"
         title = "Rama może być na granicy za małego rozmiaru" if direction_small else "Rama może być na granicy za dużego rozmiaru"
         summary = (
-            "Pozycję da się ustawić, ale wymaga ona korekt zbliżających się do praktycznych granic regulacji."
+            "Geometria znajduje się blisko granicy orientacyjnego zakresu; sąsiedni rozmiar warto porównać przed ostateczną decyzją."
         )
         suggestion = (
-            "Porównaj geometrię z następnym większym rozmiarem. Jeśli wymaga on mniejszych korekt reachu i stacku, może być lepszym punktem wyjścia."
+            "Porównaj geometrię z następnym większym rozmiarem. Wybierz ten, który wymaga mniejszych korekt stacku i reachu."
             if direction_small
-            else "Porównaj geometrię z następnym mniejszym rozmiarem. Jeśli ograniczy potrzebę krótkiego mostka i dużego obniżenia kierownicy, może być lepszy."
+            else "Porównaj geometrię z następnym mniejszym rozmiarem. Wybierz ten, który wymaga mniejszych korekt stacku i reachu."
         )
         confidence = "umiarkowana"
 
-    reasons = tuple((small_reasons if direction_small else large_reasons)[:4])
+    reasons = tuple((small_reasons if direction_small else large_reasons)[:5])
     return FrameSizeAssessment(
         status=status,
         title=title,

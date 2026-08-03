@@ -2,8 +2,18 @@ from bikefit.frame_size import assess_frame_size
 from bikefit.models import BikeGeometry, FitSettings, Rider
 
 
-def rider():
-    return Rider.from_height_inseam("Test", 1780.0, 830.0, "Średnia", 80.0)
+def rider(height=1780.0, inseam=830.0, flexibility="Średnia"):
+    return Rider.from_height_inseam("Test", height, inseam, flexibility, 80.0)
+
+
+def kross_esker_m():
+    return BikeGeometry(
+        name="KROSS Esker 7.0 2025 M",
+        bike_type="Gravel",
+        stack=557.0,
+        reach=375.0,
+        seat_tube_length=520.0,
+    )
 
 
 def test_normal_frame_is_accepted():
@@ -27,3 +37,43 @@ def test_large_negative_corrections_suggest_smaller_frame():
     result = assess_frame_size(bike, rider(), settings)
     assert result.status in {"borderline_large", "too_large"}
     assert "mniejsz" in result.suggestion.lower()
+
+
+def test_kross_m_is_too_large_for_160_cm_rider():
+    result = assess_frame_size(
+        kross_esker_m(),
+        rider(1600.0, 744.0, "Ograniczona"),
+        FitSettings(style="Komfortowa"),
+    )
+    assert result.status in {"borderline_large", "too_large"}
+    assert result.large_score > result.small_score
+
+
+def test_kross_m_is_good_for_178_cm_rider_even_after_large_optimizer_correction():
+    result = assess_frame_size(
+        kross_esker_m(),
+        rider(1780.0, 828.0, "Ograniczona"),
+        FitSettings(style="Komfortowa", handlebar_reach_delta=-48.0, handlebar_stack_delta=28.0),
+    )
+    assert result.status == "good"
+
+
+def test_kross_m_is_too_small_for_190_cm_rider():
+    result = assess_frame_size(
+        kross_esker_m(),
+        rider(1900.0, 884.0, "Ograniczona"),
+        FitSettings(style="Komfortowa"),
+    )
+    assert result.status in {"borderline_small", "too_small"}
+    assert result.small_score > result.large_score
+
+
+def test_assessment_changes_immediately_when_rider_height_changes():
+    bike = kross_esker_m()
+    settings = FitSettings(style="Zrównoważona")
+    short = assess_frame_size(bike, rider(1600.0, 744.0), settings)
+    medium = assess_frame_size(bike, rider(1780.0, 828.0), settings)
+    tall = assess_frame_size(bike, rider(1900.0, 884.0), settings)
+    assert short.status in {"borderline_large", "too_large"}
+    assert medium.status == "good"
+    assert tall.status in {"borderline_small", "too_small"}
