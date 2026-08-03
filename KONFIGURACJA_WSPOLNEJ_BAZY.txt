@@ -1,0 +1,53 @@
+KONFIGURACJA TRWAŁEJ WSPÓLNEJ BAZY GEOMETRII
+BikeFit Studio Online v3.0
+
+Po wykonaniu tej konfiguracji geometria dodana przez jedną osobę będzie dostępna
+na liście u pozostałych osób także po odświeżeniu i ponownym uruchomieniu aplikacji.
+
+ZALECANY WARIANT — ODDZIELNE REPOZYTORIUM DANYCH
+
+1. Na GitHubie utwórz repozytorium:
+   bikefit-studio-data
+
+2. Podczas tworzenia zaznacz „Add a README file”, aby powstała gałąź main.
+   Repozytorium może być prywatne.
+
+3. Utwórz Fine-grained personal access token:
+   GitHub -> Settings -> Developer settings -> Personal access tokens
+   -> Fine-grained tokens -> Generate new token.
+
+4. Wybierz tylko repozytorium bikefit-studio-data.
+
+5. Ustaw minimalne uprawnienia:
+   Repository permissions -> Contents -> Read and write.
+   Pozostałe uprawnienia zostaw bez zmian.
+
+6. Skopiuj token. GitHub pokaże go tylko raz.
+
+7. Otwórz Streamlit Cloud:
+   Manage app -> Settings -> Secrets
+
+8. Wklej, uzupełniając własny token:
+
+[geometry_store]
+token = "github_pat_TUTAJ_TOKEN"
+owner = "MisieKroja02"
+repo = "bikefit-studio-data"
+branch = "main"
+path = "community_bikes.json"
+
+9. Zapisz Secrets i uruchom:
+   Manage app -> Reboot app
+
+10. Po uruchomieniu w panelu bocznym powinien pojawić się status:
+    „Wspólna baza online: ... geometrii”.
+
+WAŻNE
+
+- Nie wklejaj tokenu do app.py ani do publicznego repozytorium.
+- Aplikacja zapisuje wyłącznie geometrie rowerów. Nie zapisuje wzrostu, masy,
+  pseudonimu użytkownika ani profilu bikefittingowego.
+- Jeżeli dwie osoby zapiszą geometrię jednocześnie, program automatycznie
+  ponawia zapis z najnowszą wersją pliku.
+- Geometria o tej samej nazwie zastępuje wcześniejszy wpis. Nowa nazwa tworzy
+  nową pozycję na liście.

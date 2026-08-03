@@ -41,17 +41,17 @@ class _TextExtractor(HTMLParser):
 ALIASES: Dict[str, tuple[str, ...]] = {
     "stack": ("stack",),
     "reach": ("reach",),
-    "seat_tube_angle": ("seat tube angle", "kąt rury podsiodłowej", "seat angle"),
-    "head_tube_angle": ("head tube angle", "kąt główki ramy", "head angle"),
-    "head_tube_length": ("head tube length", "długość główki ramy", "head tube"),
-    "seat_tube_length": ("seat tube length", "długość rury podsiodłowej", "seat tube"),
-    "top_tube": ("top tube length", "effective top tube", "top tube", "górna rura"),
-    "bb_drop": ("bottom bracket drop", "bb drop", "obniżenie suportu"),
-    "chainstay": ("chainstay length", "chainstay", "długość dolnych widełek"),
-    "wheelbase": ("wheelbase", "rozstaw osi"),
-    "fork_offset": ("fork offset", "fork rake", "offset widelca"),
-    "stem_length": ("stem length", "długość mostka", "stem"),
-    "crank_length": ("crank length", "długość korby", "crank"),
+    "seat_tube_angle": ("seat tube angle", "kąt rury podsiodłowej", "seat angle", "sitzwinkel", "sitzrohrwinkel"),
+    "head_tube_angle": ("head tube angle", "kąt główki ramy", "head angle", "lenkwinkel", "steuerrohrwinkel"),
+    "head_tube_length": ("head tube length", "długość główki ramy", "head tube", "steuerrohrlänge", "steuerrohr"),
+    "seat_tube_length": ("seat tube length", "długość rury podsiodłowej", "seat tube", "sitzrohrlänge", "sitzrohr"),
+    "top_tube": ("top tube length", "effective top tube", "top tube", "górna rura", "oberrohrlänge", "oberrohr horizontal", "oberrohr"),
+    "bb_drop": ("bottom bracket drop", "bb drop", "obniżenie suportu", "tretlagerabsenkung", "tretlager drop"),
+    "chainstay": ("chainstay length", "chainstay", "długość dolnych widełek", "kettenstrebenlänge", "kettenstrebe"),
+    "wheelbase": ("wheelbase", "rozstaw osi", "radstand"),
+    "fork_offset": ("fork offset", "fork rake", "offset widelca", "gabeloffset", "gabelvorlauf"),
+    "stem_length": ("stem length", "długość mostka", "stem", "vorbaulänge", "vorbau"),
+    "crank_length": ("crank length", "długość korby", "crank", "kurbellänge", "kurbel"),
 }
 
 ANGLE_FIELDS = {"seat_tube_angle", "head_tube_angle"}

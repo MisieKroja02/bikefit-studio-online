@@ -17,7 +17,17 @@ from bikefit.internet_import import fetch_geometry
 from bikefit.kinematics import analyze_cycle, bike_points, calculate_pose
 from bikefit.models import BikeGeometry, FitSettings, Rider
 from bikefit.optimizer import optimize_fit
+from bikefit.shared_store import (
+    GeometryStoreConfig,
+    SharedStoreError,
+    config_from_mapping,
+    load_local_bikes,
+    load_remote_bikes,
+    save_local_bike,
+    save_remote_bike,
+)
 from bikefit.recommendations import measurement_guide, recommend_and_evaluate
+from bikefit.visitor_counter import CounterError, request_counter
 from bikefit.tire_pressure import (
     CASING_FACTORS,
     GOAL_OFFSETS_BAR,
@@ -30,12 +40,13 @@ from bikefit.tire_pressure import (
 
 ROOT = Path(__file__).resolve().parent
 BIKES_FILE = ROOT / "data" / "bikes.json"
+COMMUNITY_BIKES_FILE = ROOT / "data" / "community_bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
-COUNTER_DOMAIN = "bikefitstudio.streamlit.app"
-COUNTER_API = "https://visitor.6developer.com/visit"
+COUNTER_NAMESPACE = "misiek-bikefit-studio-online"
+COUNTER_API_BASE = "https://api.counterapi.dev/v1"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v2.9 — MisieK",
+    page_title="BikeFit Studio Online v3.0 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -367,85 +378,102 @@ GEOMETRY_FIELDS = [
 ]
 
 
-def record_visitor_once() -> None:
-    """Rejestruje jedno wejście na sesję przeglądarki przez zewnętrzny licznik."""
-    if bool(st.session_state.get("visitor_counter_recorded", False)):
-        return
-    safe_domain = html.escape(COUNTER_DOMAIN, quote=True)
-    safe_api = html.escape(COUNTER_API, quote=True)
-    components.html(
-        f"""
-        <script>
-        (() => {{
-          fetch('{safe_api}', {{
-            method: 'POST',
-            headers: {{'Content-Type': 'application/json'}},
-            body: JSON.stringify({{
-              domain: '{safe_domain}',
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-              page_path: '/',
-              page_title: 'BikeFit Studio Online',
-              referrer: ''
-            }})
-          }}).catch(() => {{}});
-        }})();
-        </script>
-        """,
-        height=0,
-        scrolling=False,
-    )
-    st.session_state.visitor_counter_recorded = True
-
-
 def render_visitor_counter() -> None:
-    """Wyświetla łączną liczbę odwiedzin i liczbę wejść dzisiaj w stopce."""
-    safe_domain = html.escape(COUNTER_DOMAIN, quote=True)
-    safe_api = html.escape(COUNTER_API, quote=True)
-    components.html(
-        f"""
-        <!doctype html>
-        <html lang="pl">
-        <head>
-          <meta charset="utf-8">
-          <style>
-            html, body {{ margin:0; padding:0; background:transparent; font-family:Segoe UI,Arial,sans-serif; }}
-            .counter {{
-              box-sizing:border-box; width:100%; display:flex; justify-content:center; align-items:center;
-              gap:10px; color:#9db3c7; font-size:13px; line-height:1.2; padding:8px 10px;
-            }}
-            .pill {{
-              display:inline-flex; align-items:center; gap:7px; padding:7px 12px; border-radius:999px;
-              background:#102131; border:1px solid #35536b; color:#eaf5ff;
-              box-shadow:0 4px 14px rgba(0,0,0,.15);
-            }}
-            .value {{ color:#67e4b5; font-weight:800; font-size:15px; }}
-            .today {{ color:#8fb6d4; }}
-            .error {{ color:#8198aa; }}
-          </style>
-        </head>
-        <body>
-          <div class="counter">
-            <div class="pill" id="counter">👥 Odwiedziny: <span class="value">—</span></div>
-          </div>
-          <script>
-          (() => {{
-            const node = document.getElementById('counter');
-            fetch('{safe_api}?domain=' + encodeURIComponent('{safe_domain}'))
-              .then(r => {{ if (!r.ok) throw new Error('counter'); return r.json(); }})
-              .then(data => {{
-                const total = new Intl.NumberFormat('pl-PL').format(Number(data.totalCount || 0));
-                const today = new Intl.NumberFormat('pl-PL').format(Number(data.todayCount || 0));
-                node.innerHTML = '👥 Odwiedziny: <span class="value">' + total + '</span><span class="today">• dzisiaj: ' + today + '</span>';
-              }})
-              .catch(() => {{ node.innerHTML = '<span class="error">👥 Licznik chwilowo niedostępny</span>'; }});
-          }})();
-          </script>
-        </body>
-        </html>
-        """,
-        height=52,
-        scrolling=False,
+    # Każdy licznik ma osobną flagę, więc częściowa awaria nie zawyża sumy.
+    day_key = time.strftime("visits-%Y%m%d")
+    try:
+        if not bool(st.session_state.get("visitor_total_recorded", False)):
+            st.session_state.visitor_counter_total = request_counter(
+                COUNTER_API_BASE, COUNTER_NAMESPACE, "visits", increment=True
+            )
+            st.session_state.visitor_total_recorded = True
+        if not bool(st.session_state.get("visitor_today_recorded", False)):
+            st.session_state.visitor_counter_today = request_counter(
+                COUNTER_API_BASE, COUNTER_NAMESPACE, day_key, increment=True
+            )
+            st.session_state.visitor_today_recorded = True
+
+        total = int(st.session_state.get("visitor_counter_total", 0))
+        today = int(st.session_state.get("visitor_counter_today", 0))
+        total_text = f"{total:,}".replace(",", " ")
+        today_text = f"{today:,}".replace(",", " ")
+        counter_html = (
+            '<div style="display:flex;justify-content:center;margin-top:12px">'
+            '<div style="display:inline-flex;gap:9px;align-items:center;padding:8px 14px;border-radius:999px;'
+            'background:#102131;border:1px solid #35536b;color:#eaf5ff;font-size:.82rem">'
+            f'👥 Odwiedziny: <b style="color:#67e4b5;font-size:.95rem">{total_text}</b>'
+            f'<span style="color:#9db3c7">• dzisiaj: {today_text}</span></div></div>'
+        )
+        st.markdown(counter_html, unsafe_allow_html=True)
+    except CounterError:
+        return
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_remote_shared_bikes_cached(
+    owner: str, repo: str, branch: str, store_path: str, _token: str
+) -> list[dict[str, object]]:
+    config = GeometryStoreConfig(
+        token=_token, owner=owner, repo=repo, branch=branch, path=store_path
     )
+    bikes, _sha = load_remote_bikes(config)
+    return bikes
+
+
+@st.cache_data(ttl=15, show_spinner=False)
+def load_local_shared_bikes_cached(path_text: str) -> list[dict[str, object]]:
+    return load_local_bikes(Path(path_text))
+
+
+def geometry_store_config() -> GeometryStoreConfig | None:
+    try:
+        section = st.secrets.get("geometry_store", {})
+    except Exception:
+        return None
+    return config_from_mapping(section)
+
+
+def load_shared_geometry_payloads() -> tuple[list[dict[str, object]], bool, str]:
+    """Zwraca wspólne geometrie, informację o trwałości i krótki status."""
+    config = geometry_store_config()
+    if config is not None:
+        try:
+            bikes = load_remote_shared_bikes_cached(
+                config.owner, config.repo, config.branch, config.path, config.token
+            )
+            return bikes, True, f"Wspólna baza online: {len(bikes)} geometrii"
+        except SharedStoreError:
+            # Awaria zewnętrznego magazynu nie może zatrzymać konfiguratora.
+            local = load_local_shared_bikes_cached(str(COMMUNITY_BIKES_FILE))
+            return local, False, "Wspólna baza chwilowo niedostępna — używam kopii lokalnej"
+    local = load_local_shared_bikes_cached(str(COMMUNITY_BIKES_FILE))
+    return local, False, f"Baza lokalna: {len(local)} geometrii"
+
+
+def persist_shared_geometry(bike: BikeGeometry, saved_by: str) -> tuple[bool, str]:
+    """Zapisuje geometrię do wspólnej bazy, bez ujawniania backendu w UI."""
+    payload = bike.to_dict()
+    config = geometry_store_config()
+    try:
+        if config is not None:
+            save_remote_bike(config, payload, saved_by=saved_by)
+            load_remote_shared_bikes_cached.clear()
+            return True, "Geometria została zapisana we wspólnej bazie i będzie widoczna dla innych osób."
+        save_local_bike(COMMUNITY_BIKES_FILE, payload, saved_by=saved_by)
+        load_local_shared_bikes_cached.clear()
+        return False, "Geometria została zapisana na bieżącym serwerze. Włącz trwałą wspólną bazę, aby zachować ją po ponownym wdrożeniu."
+    except (SharedStoreError, OSError) as exc:
+        # Zawsze zachowujemy ją co najmniej w sesji użytkownika.
+        return False, f"Geometria pozostała w tej sesji, ale wspólny zapis nie powiódł się: {exc}"
+
+
+def remember_geometry_in_session(bike: BikeGeometry) -> None:
+    payload = bike.to_dict()
+    key = bike.name.casefold()
+    st.session_state.custom_bikes = [
+        item for item in st.session_state.custom_bikes
+        if str(item.get("name", "")).casefold() != key
+    ] + [payload]
 
 
 def external_link_button(label: str, url: str) -> None:
@@ -489,10 +517,10 @@ def clamp_number(value: object, low: float, high: float, fallback: float) -> flo
 def sanitize_numeric_state() -> None:
     """Naprawia stare, błędne lub zaimportowane wartości przed utworzeniem widżetów."""
     defaults = {
-        "height": 1780.0,
-        "inseam": 830.0,
-        "weight": 101.0,
-        "saddle_height": 738.0,
+        "height": 1750.0,
+        "inseam": 810.0,
+        "weight": 75.0,
+        "saddle_height": 715.0,
         "saddle_fore_aft": 0.0,
         "handlebar_stack_delta": 0.0,
         "handlebar_reach_delta": 0.0,
@@ -514,7 +542,7 @@ def sanitize_fit_settings(settings: FitSettings) -> FitSettings:
     """Ogranicza wynik algorytmu do zakresów obsługiwanych przez interfejs."""
     return replace(
         settings,
-        saddle_height=clamp_number(settings.saddle_height, 500.0, 900.0, 738.0),
+        saddle_height=clamp_number(settings.saddle_height, 500.0, 900.0, 715.0),
         saddle_fore_aft=clamp_number(settings.saddle_fore_aft, -60.0, 80.0, 0.0),
         handlebar_stack_delta=clamp_number(settings.handlebar_stack_delta, -60.0, 100.0, 0.0),
         handlebar_reach_delta=clamp_number(settings.handlebar_reach_delta, -80.0, 80.0, 0.0),
@@ -527,13 +555,13 @@ def sanitize_fit_settings(settings: FitSettings) -> FitSettings:
 
 def init_state() -> None:
     defaults = {
-        "profile_name": "Robert",
-        "height": 1780.0,
-        "inseam": 830.0,
-        "weight": 101.0,
+        "profile_name": "Rowerzysta",
+        "height": 1750.0,
+        "inseam": 810.0,
+        "weight": 75.0,
         "flexibility": "Średnia",
         "style": "Zrównoważona",
-        "saddle_height": 738.0,
+        "saddle_height": 715.0,
         "saddle_fore_aft": 0.0,
         "handlebar_stack_delta": 0.0,
         "handlebar_reach_delta": 0.0,
@@ -558,6 +586,9 @@ def init_state() -> None:
         "user_alias": "",
         "fit_notes": [],
         "custom_bikes": [],
+        "selected_bike": "Gravel M — przykład",
+        "shared_store_status": "",
+        "shared_store_persistent": False,
         "sidebar_import_url": "",
         "sidebar_import_status": "",
         "sidebar_import_notes": [],
@@ -575,14 +606,14 @@ def estimate_inseam_from_height(height_mm: float) -> float:
     Współczynnik 0,465 daje rozsądny punkt startowy dla konfiguratora,
     ale nie zastępuje pomiaru przy ścianie z książką między nogami.
     """
-    return round(clamp_number(float(height_mm) * 0.465, 600.0, 1100.0, 830.0))
+    return round(clamp_number(float(height_mm) * 0.465, 600.0, 1100.0, 810.0))
 
 
 def sync_estimated_inseam() -> None:
     """Aktualizuje przekrok w callbacku przed ponownym utworzeniem widżetów."""
     if bool(st.session_state.get("auto_inseam", False)):
         st.session_state.inseam = estimate_inseam_from_height(
-            float(st.session_state.get("height", 1780.0))
+            float(st.session_state.get("height", 1750.0))
         )
 
 
@@ -641,12 +672,26 @@ def current_rider() -> Rider:
 
 
 def bike_catalog() -> list[BikeGeometry]:
-    bikes = list(load_bikes())
-    for payload in st.session_state.custom_bikes:
-        custom = BikeGeometry.from_dict(payload)
-        if not any(b.name == custom.name for b in bikes):
-            bikes.append(custom)
-    return bikes
+    """Łączy bazę wbudowaną, wspólną bazę online i geometrię z sesji."""
+    records: list[BikeGeometry] = list(load_bikes())
+    index_by_name = {bike.name.casefold(): idx for idx, bike in enumerate(records)}
+
+    shared_payloads, persistent, status = load_shared_geometry_payloads()
+    st.session_state.shared_store_status = status
+    st.session_state.shared_store_persistent = persistent
+
+    for payload in [*shared_payloads, *st.session_state.custom_bikes]:
+        try:
+            bike = BikeGeometry.from_dict(dict(payload))
+        except (TypeError, ValueError):
+            continue
+        key = bike.name.casefold()
+        if key in index_by_name:
+            records[index_by_name[key]] = bike
+        else:
+            index_by_name[key] = len(records)
+            records.append(bike)
+    return records
 
 
 def reset_geometry_state(bike: BikeGeometry) -> None:
@@ -1163,7 +1208,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v2.9</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v3.0</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1174,7 +1219,6 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
 
 
 init_state()
-record_visitor_once()
 apply_pending_profile_payload()
 sanitize_numeric_state()
 profile_login_gate()
@@ -1189,6 +1233,14 @@ with st.sidebar:
     st.markdown("---")
 
     catalog = bike_catalog()
+    if st.session_state.shared_store_persistent:
+        st.caption("☁️ " + st.session_state.shared_store_status)
+    else:
+        st.caption("💾 " + st.session_state.shared_store_status)
+    if st.button("Odśwież wspólną bazę", key="refresh_shared_geometries", use_container_width=True):
+        load_remote_shared_bikes_cached.clear()
+        load_local_shared_bikes_cached.clear()
+        st.rerun()
     names = [b.name for b in catalog]
     current_name = st.selectbox(
         "Wybierz rower / geometrię",
@@ -1206,7 +1258,7 @@ with st.sidebar:
         st.caption("Tak jak w wersji desktopowej: otwórz katalog, wybierz dokładny model, rocznik i rozmiar, a potem wklej adres strony roweru.")
         external_link_button("Otwórz Bike Insights", "https://bikeinsights.com/search")
         external_link_button("Otwórz Geometry Geeks", "https://geometrygeeks.bike/")
-        external_link_button("Otwórz 99 Spokes", "https://99spokes.com/")
+        external_link_button("Otwórz Bike-Stats", "https://www.bike-stats.de/en/")
         st.text_input(
             "Adres konkretnego modelu i rozmiaru",
             key="sidebar_import_url",
@@ -1222,13 +1274,14 @@ with st.sidebar:
                 try:
                     with st.spinner("Pobieram stronę i rozpoznaję geometrię…"):
                         imported, notes = safe_import_url(import_url, geometry_from_state(base_bike))
-                    st.session_state.custom_bikes = [
-                        item for item in st.session_state.custom_bikes if item.get("name") != imported.name
-                    ] + [imported.to_dict()]
+                    remember_geometry_in_session(imported)
+                    saved_globally, save_message = persist_shared_geometry(
+                        imported, str(st.session_state.user_alias)
+                    )
                     st.session_state.selected_bike = imported.name
                     reset_geometry_state(imported)
                     st.session_state.geometry_for = imported.name
-                    st.session_state.sidebar_import_status = f"Zaimportowano: {imported.name}"
+                    st.session_state.sidebar_import_status = f"Zaimportowano: {imported.name}. {save_message}"
                     st.session_state.sidebar_import_notes = notes
                     st.rerun()
                 except Exception as exc:
@@ -1243,7 +1296,7 @@ with st.sidebar:
             st.caption(f"• {import_note}")
 
     with st.expander("📐 Ręczna edycja geometrii", expanded=False):
-        st.caption("Zmiany działają od razu w symulacji. Po zapisaniu geometria pojawi się na liście wyboru w tej sesji.")
+        st.caption("Zmiany działają od razu w symulacji. Po zapisaniu geometria pojawi się we wspólnej liście wyboru dla wszystkich użytkowników.")
         st.text_input("Nazwa geometrii", key="geo_name")
         st.selectbox("Typ roweru", ["Gravel", "Road", "MTB", "Trekking", "City", "TT"], key="geo_type")
         quick_cols = st.columns(2)
@@ -1251,11 +1304,13 @@ with st.sidebar:
             quick_cols[i % 2].number_input(label_text, key=f"geo_{field}", step=step, format="%.1f")
         if st.button("Zapisz jako własną geometrię", key="save_geometry_sidebar", use_container_width=True, type="primary"):
             edited = geometry_from_state(base_bike)
-            payload = edited.to_dict()
-            st.session_state.custom_bikes = [p for p in st.session_state.custom_bikes if p.get("name") != edited.name] + [payload]
+            remember_geometry_in_session(edited)
+            _saved_globally, save_message = persist_shared_geometry(
+                edited, str(st.session_state.user_alias)
+            )
             st.session_state.selected_bike = edited.name
             st.session_state.geometry_for = edited.name
-            st.success("Geometria została zapisana w bieżącej sesji i dodana do listy.")
+            st.session_state.sidebar_import_status = save_message
             st.rerun()
 
     bike = geometry_from_state(base_bike)
@@ -1379,7 +1434,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v2.9</h1>
+  <h1>BikeFit Studio Online v3.0</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1589,7 +1644,7 @@ with import_tab:
     with l2:
         external_link_button("Geometry Geeks", "https://geometrygeeks.bike/")
     with l3:
-        external_link_button("99 Spokes", "https://99spokes.com/")
+        external_link_button("Bike-Stats", "https://www.bike-stats.de/en/")
     url = st.text_input("Adres strony z geometrią", placeholder="https://...")
     if st.button("Pobierz i rozpoznaj geometrię", type="primary"):
         if not url:
@@ -1598,11 +1653,14 @@ with import_tab:
             try:
                 with st.spinner("Pobieram stronę i rozpoznaję parametry…"):
                     imported, notes = safe_import_url(url, bike)
-                st.session_state.custom_bikes = [p for p in st.session_state.custom_bikes if p.get("name") != imported.name] + [imported.to_dict()]
+                remember_geometry_in_session(imported)
+                _saved_globally, save_message = persist_shared_geometry(
+                    imported, str(st.session_state.user_alias)
+                )
                 st.session_state.selected_bike = imported.name
                 reset_geometry_state(imported)
                 st.session_state.geometry_for = imported.name
-                st.success("Import zakończony. Sprawdź wartości w zakładce „Geometria roweru”.")
+                st.success("Import zakończony. " + save_message)
                 for note in notes:
                     st.write(f"• {note}")
             except Exception as exc:
@@ -1665,5 +1723,5 @@ with report_tab:
 
 render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online v2.9 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik zewnętrzny, bez cookies.</span></div>
+<div class="footer-note">BikeFit Studio Online v3.0 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
 """, unsafe_allow_html=True)

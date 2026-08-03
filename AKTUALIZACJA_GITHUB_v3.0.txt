@@ -1,0 +1,22 @@
+AKTUALIZACJA BIKEFIT STUDIO ONLINE DO v3.0
+
+Najpewniejsza metoda:
+
+1. Rozpakuj BikeFit_Studio_Online_v3.0_GitHub.zip.
+2. W repozytorium aplikacji podmień całą zawartość na pliki z paczki.
+3. Szczególnie ważne są:
+   - app.py
+   - bikefit/internet_import.py
+   - bikefit/shared_store.py
+   - bikefit/visitor_counter.py
+   - data/community_bikes.json
+   - .streamlit/config.toml
+4. Wykonaj Commit changes.
+5. W Streamlit wybierz Manage app -> Reboot app.
+6. Naciśnij Ctrl+F5.
+
+Aby geometrie były trwałe i wspólne dla wszystkich osób, wykonaj instrukcję:
+KONFIGURACJA_WSPOLNEJ_BAZY.txt
+
+Bez ustawienia Secrets aplikacja nadal działa, ale geometrie zapisane lokalnie mogą
+zniknąć po ponownym wdrożeniu serwera Streamlit.

@@ -1,10 +1,16 @@
-WDROŻENIE BIKEFIT STUDIO ONLINE v1.9
+WDROŻENIE BIKEFIT STUDIO ONLINE v3.0
 
-1. Wgraj całą zawartość paczki do publicznego repozytorium GitHub.
+1. Wgraj całą zawartość paczki do repozytorium GitHub aplikacji.
 2. W Streamlit Community Cloud wybierz repozytorium, gałąź main i plik app.py.
 3. Kliknij Deploy.
-4. Po aktualizacji app.py Streamlit wdroży zmianę automatycznie.
-5. Gdy widzisz starą wersję: Manage app -> Reboot app, następnie Ctrl+F5.
+4. Gdy po aktualizacji nadal widać starą wersję:
+   Manage app -> Reboot app, następnie Ctrl+F5.
 
-Nie trzeba konfigurować tokenu ani Streamlit Secrets.
-Profile nie są zapisywane na GitHubie. Każdy użytkownik ma niezależną sesję przeglądarki i może pobrać kopię profilu JSON z zakładki „Raport”.
+Aplikacja działa bez dodatkowej konfiguracji, jednak wtedy geometrie użytkowników są
+zapisywane tylko w lokalnym pliku serwera i mogą zniknąć po ponownym wdrożeniu.
+
+Aby zapamiętywać wszystkie geometrie na stałe i udostępniać je wszystkim osobom,
+wykonaj instrukcję z pliku KONFIGURACJA_WSPOLNEJ_BAZY.txt.
+
+Profile rowerzystów nie są zapisywane w bazie. Użytkownik może pobrać profil JSON
+z zakładki Raport.

@@ -52,3 +52,21 @@ class CoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_importer_recognizes_german_bike_stats_labels():
+    from bikefit.internet_import import _extract_from_text
+
+    text = """
+    Stack 575 mm Reach 385 mm Sitzwinkel 73,5° Lenkwinkel 71,5°
+    Steuerrohrlänge 155 mm Sitzrohrlänge 500 mm Oberrohrlänge 550 mm
+    Tretlagerabsenkung 72 mm Kettenstrebenlänge 430 mm Radstand 1035 mm
+    Gabeloffset 50 mm Vorbaulänge 90 mm Kurbellänge 172,5 mm
+    """
+    values = _extract_from_text(text)
+    assert values["stack"] == 575
+    assert values["reach"] == 385
+    assert values["seat_tube_angle"] == 73.5
+    assert values["head_tube_angle"] == 71.5
+    assert values["wheelbase"] == 1035
+    assert values["chainstay"] == 430

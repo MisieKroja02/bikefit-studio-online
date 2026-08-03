@@ -1,52 +1,68 @@
-# BikeFit Studio Online v2.4
+# BikeFit Studio Online v3.0
 
 Internetowy konfigurator pozycji na rowerze. Autor: **MisieK**.
 
-## Funkcje
+## Najważniejsze funkcje
 
 - wejście przez imię lub pseudonim,
-- niezależna sesja dla każdej osoby korzystającej z linku,
+- niezależna sesja każdej osoby korzystającej z linku,
 - wybór, import i ręczna edycja geometrii roweru,
-- dobór ustawienia bazowego,
-- optymalizacja pozycji,
-- animacja korby według kadencji,
+- wspólna baza geometrii dodanych przez użytkowników,
+- dobór ustawienia bazowego i automatyczna optymalizacja,
+- płynna animacja korby według kadencji,
 - kąty kolana, biodra, łokcia i tułowia,
-- czytelne wymiary M1–M5,
+- czytelne wymiary M1–M5 i regulacja siodła na szynach,
 - kalkulator ciśnienia opon,
-- raport oraz pobieranie profilu JSON.
+- wykres kątów przez pełny obrót korby,
+- raport HTML oraz kopia profilu JSON,
+- licznik odwiedzin w stopce.
 
-## Ważne
+## Zmiany v3.0
 
-Dane nie są zapisywane na GitHubie ani na stałe na serwerze. Każdy użytkownik pracuje w niezależnej sesji swojej przeglądarki. Profil można pobrać jako JSON w zakładce raportu.
+- neutralne dane startowe: 175 cm, 75 kg, przekrok 810 mm,
+- domyślna geometria demonstracyjna Gravel M,
+- geometrie importowane i wpisywane ręcznie mogą być zapisywane we wspólnej trwałej bazie,
+- zapis wspólnej geometrii jest wykonywany w tle; użytkownik nie widzi odnośników administracyjnych,
+- dodano Bike-Stats zamiast 99 Spokes,
+- importer rozpoznaje również popularne niemieckie nazwy parametrów,
+- licznik przeniesiono na CounterAPI i zabezpieczono przed wielokrotnym naliczaniem przy odświeżaniu,
+- awaria wspólnej bazy lub licznika nie zatrzymuje konfiguratora.
 
-## Aktualizacja Streamlit
+## Uruchomienie lokalne
 
-Podmień `app.py` w głównym katalogu repozytorium, wykonaj commit i w razie potrzeby uruchom `Manage app → Reboot app`.
+```bash
+python -m pip install -r requirements.txt
+streamlit run app.py
+```
 
+## Wdrożenie
 
-## Poprawka v2.4
+Repozytorium powinno zawierać w katalogu głównym:
 
-Usunięto modyfikowanie aktywnego `st.session_state` przez `sanitize_numeric_state()` po utworzeniu widżetów. Sanitizacja działa teraz tylko na początku przebiegu aplikacji.
+- `app.py`,
+- `requirements.txt`,
+- foldery `bikefit`, `data`, `assets`, `.streamlit`.
 
+W Streamlit Community Cloud jako główny plik wybierz `app.py`.
 
-## Nowości v2.4
+## Trwała wspólna baza geometrii
 
-- płynna animacja wykonywana po stronie przeglądarki,
-- właściwy kierunek obrotu korby,
-- osobna dostępna zakładka Wykresy kątów,
-- bezpieczny przycisk sugerowanego rozkładu masy,
-- tryb viewer dla paska Streamlit,
-- czysty link do udostępniania: `https://bikefitstudio.streamlit.app/?embed=true&embed_options=dark_theme&embed_options=hide_loading_screen`.
+Bez konfiguracji aplikacja używa lokalnego pliku `data/community_bikes.json`. Działa on podczas bieżącego uruchomienia serwera, ale hosting może go wyczyścić przy ponownym wdrożeniu.
 
+Aby wszystkie dodane geometrie pozostały po restarcie i były widoczne dla wszystkich osób, skonfiguruj sekcję `[geometry_store]` w Streamlit Secrets. Dokładna instrukcja znajduje się w pliku:
 
-## Zmiany v2.6
+`KONFIGURACJA_WSPOLNEJ_BAZY.txt`
 
-Sterowanie animacją zostało przeniesione bezpośrednio pod rysunek roweru. Obejmuje kadencję, pozycję korby, Play/Pauza/Reset, prędkość animacji, skalę oraz przełączniki kątów i wymiarów M1–M5.
+Token nigdy nie powinien znajdować się w repozytorium ani w `app.py`.
 
+## Testy
 
-## Nowości v2.9
+```bash
+python -m pytest -q
+```
 
-- osobna informacja o przesunięciu siodła na szynach,
-- kierunek do przodu / do tyłu,
-- strzałka regulacji na rysunku,
-- rozdzielenie regulacji na szynach od rzeczywistego setbacku S75.
+Pakiet zawiera testy silnika biomechanicznego, importera, kalkulatora opon, wspólnej bazy geometrii, licznika i pełny test uruchomienia interfejsu z atrapą Streamlit.
+
+## Zastrzeżenie
+
+Program jest narzędziem orientacyjnym. Nie zastępuje profesjonalnego bike fittingu, fizjoterapeuty ani diagnostyki medycznej.
