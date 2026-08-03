@@ -33,7 +33,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v2.3 — MisieK",
+    page_title="BikeFit Studio Online v2.4 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -408,6 +408,7 @@ def init_state() -> None:
         "animation_phase": 270.0,
         "animation_last_ts": None,
         "animation_speed": 1.0,
+        "auto_inseam": False,
         "user_logged_in": False,
         "user_alias": "",
         "fit_notes": [],
@@ -421,6 +422,23 @@ def init_state() -> None:
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
+
+
+def estimate_inseam_from_height(height_mm: float) -> float:
+    """Orientacyjny przekrok dla osób, które go nie znają.
+
+    Współczynnik 0,465 daje rozsądny punkt startowy dla konfiguratora,
+    ale nie zastępuje pomiaru przy ścianie z książką między nogami.
+    """
+    return round(clamp_number(float(height_mm) * 0.465, 600.0, 1100.0, 830.0))
+
+
+def sync_estimated_inseam() -> None:
+    """Aktualizuje przekrok w callbacku przed ponownym utworzeniem widżetów."""
+    if bool(st.session_state.get("auto_inseam", False)):
+        st.session_state.inseam = estimate_inseam_from_height(
+            float(st.session_state.get("height", 1780.0))
+        )
 
 
 def profile_login_gate() -> None:
@@ -954,6 +972,76 @@ def cycle_angle_records(bike: BikeGeometry, rider: Rider, settings: FitSettings)
     return records
 
 
+def render_angle_chart_svg(
+    records: list[dict[str, float | str]],
+    current_phase: float,
+) -> str:
+    """Rysuje kontrastowy wykres SVG niezależny od motywu Vega/Streamlit."""
+    knee = sorted(
+        [(float(r["Korba [°]"]), float(r["Kąt [°]"])) for r in records if r["Staw"] == "Kolano"],
+        key=lambda item: item[0],
+    )
+    hip = sorted(
+        [(float(r["Korba [°]"]), float(r["Kąt [°]"])) for r in records if r["Staw"] == "Biodro"],
+        key=lambda item: item[0],
+    )
+    all_values = [value for _angle, value in knee + hip]
+    if not all_values:
+        return '<div class="info-card">Brak prawidłowych danych do narysowania wykresu.</div>'
+
+    W, H = 1120, 430
+    left, right, top, bottom = 72, 28, 34, 58
+    plot_w, plot_h = W - left - right, H - top - bottom
+    raw_min, raw_max = min(all_values), max(all_values)
+    y_min = math.floor((raw_min - 5.0) / 10.0) * 10.0
+    y_max = math.ceil((raw_max + 5.0) / 10.0) * 10.0
+    if y_max <= y_min:
+        y_max = y_min + 10.0
+
+    def x_of(angle: float) -> float:
+        return left + max(0.0, min(360.0, angle)) / 360.0 * plot_w
+
+    def y_of(value: float) -> float:
+        return top + (y_max - value) / (y_max - y_min) * plot_h
+
+    def polyline(data: list[tuple[float, float]], color: str) -> str:
+        points = " ".join(f"{x_of(a):.1f},{y_of(v):.1f}" for a, v in data)
+        return f'<polyline points="{points}" fill="none" stroke="{color}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>'
+
+    parts = [
+        f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Wykres kątów kolana i biodra">',
+        f'<rect width="{W}" height="{H}" rx="18" fill="#0c1a27" stroke="#36536b"/>',
+    ]
+    for angle in range(0, 361, 30):
+        x = x_of(float(angle))
+        parts.append(f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{top+plot_h}" stroke="#294158" stroke-width="1"/>')
+        parts.append(f'<text x="{x:.1f}" y="{H-25}" fill="#d9e7f2" font-size="12" text-anchor="middle" font-family="Segoe UI,Arial">{angle}</text>')
+    step_y = 10.0
+    tick = y_min
+    while tick <= y_max + 0.001:
+        y = y_of(tick)
+        parts.append(f'<line x1="{left}" y1="{y:.1f}" x2="{left+plot_w}" y2="{y:.1f}" stroke="#294158" stroke-width="1"/>')
+        parts.append(f'<text x="{left-12}" y="{y+4:.1f}" fill="#d9e7f2" font-size="12" text-anchor="end" font-family="Segoe UI,Arial">{tick:.0f}°</text>')
+        tick += step_y
+
+    parts.append(polyline(knee, "#67e4b5"))
+    parts.append(polyline(hip, "#57d3ff"))
+    marker_x = x_of(float(current_phase) % 360.0)
+    parts.append(f'<line x1="{marker_x:.1f}" y1="{top}" x2="{marker_x:.1f}" y2="{top+plot_h}" stroke="#ffd166" stroke-width="2.5" stroke-dasharray="7 6"/>')
+    parts.append(f'<text x="{marker_x:.1f}" y="{top-10}" fill="#ffd166" font-size="12" font-weight="700" text-anchor="middle" font-family="Segoe UI,Arial">korba {float(current_phase)%360:.0f}°</text>')
+
+    parts += [
+        f'<line x1="{W-208}" y1="28" x2="{W-176}" y2="28" stroke="#67e4b5" stroke-width="4"/>',
+        f'<text x="{W-168}" y="33" fill="#eef7ff" font-size="13" font-family="Segoe UI,Arial">Kolano</text>',
+        f'<line x1="{W-104}" y1="28" x2="{W-72}" y2="28" stroke="#57d3ff" stroke-width="4"/>',
+        f'<text x="{W-64}" y="33" fill="#eef7ff" font-size="13" font-family="Segoe UI,Arial">Biodro</text>',
+        f'<text x="{left+plot_w/2:.1f}" y="{H-5}" fill="#d9e7f2" font-size="13" text-anchor="middle" font-family="Segoe UI,Arial">Pozycja korby [°]</text>',
+        f'<text x="18" y="{top+plot_h/2:.1f}" fill="#d9e7f2" font-size="13" text-anchor="middle" transform="rotate(-90 18 {top+plot_h/2:.1f})" font-family="Segoe UI,Arial">Kąt stawu [°]</text>',
+        '</svg>',
+    ]
+    return "".join(parts)
+
+
 def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     analysis = analyze_cycle(bike, rider, settings, samples=72)
     pressure = calculate_tire_pressure(rider, bike, settings)
@@ -961,7 +1049,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v2.3</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v2.4</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1060,8 +1148,33 @@ with st.sidebar:
     st.markdown("#### Rowerzysta")
     st.text_input("Nazwa profilu", key="profile_name")
     c1, c2 = st.columns(2)
-    c1.number_input("Wzrost [mm]", 1400.0, 2200.0, key="height", step=1.0)
-    c2.number_input("Przekrok [mm]", 600.0, 1100.0, key="inseam", step=1.0)
+    c1.number_input(
+        "Wzrost [mm]",
+        1400.0,
+        2200.0,
+        key="height",
+        step=1.0,
+        on_change=sync_estimated_inseam,
+    )
+    c2.number_input(
+        "Przekrok [mm]",
+        600.0,
+        1100.0,
+        key="inseam",
+        step=1.0,
+        disabled=bool(st.session_state.get("auto_inseam", False)),
+        help="Najdokładniej zmierzyć od podłogi do krocza przy ścianie. Możesz też użyć wartości orientacyjnej z wzrostu.",
+    )
+    st.checkbox(
+        "Nie znam przekroku — oblicz orientacyjnie z wzrostu",
+        key="auto_inseam",
+        on_change=sync_estimated_inseam,
+    )
+    if bool(st.session_state.get("auto_inseam", False)):
+        st.caption(
+            f"Wpisano orientacyjnie **{float(st.session_state.inseam):.0f} mm** "
+            f"(około 46,5% wzrostu). Do dokładnego ustawienia roweru warto później wykonać prawdziwy pomiar."
+        )
     c3, c4 = st.columns(2)
     c3.number_input("Masa [kg]", 35.0, 220.0, key="weight", step=0.5)
     c4.selectbox("Mobilność", ["Ograniczona", "Średnia", "Dobra"], key="flexibility")
@@ -1146,7 +1259,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v2.3</h1>
+  <h1>BikeFit Studio Online v2.4</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1326,35 +1439,18 @@ with import_tab:
 with angles_tab:
     st.subheader("Wykresy kątów przez pełny obrót korby")
     angle_records = cycle_angle_records(bike, rider, settings)
-    st.vega_lite_chart(
-        {
-            "data": {"values": angle_records},
-            "mark": {"type": "line", "strokeWidth": 3, "interpolate": "monotone"},
-            "encoding": {
-                "x": {"field": "Korba [°]", "type": "quantitative", "scale": {"domain": [0, 360]}, "title": "Pozycja korby [°]"},
-                "y": {"field": "Kąt [°]", "type": "quantitative", "title": "Kąt stawu [°]"},
-                "color": {
-                    "field": "Staw",
-                    "type": "nominal",
-                    "scale": {"domain": ["Kolano", "Biodro"], "range": ["#67e4b5", "#57d3ff"]},
-                },
-                "tooltip": [
-                    {"field": "Staw", "type": "nominal"},
-                    {"field": "Korba [°]", "type": "quantitative"},
-                    {"field": "Kąt [°]", "type": "quantitative"},
-                ],
-            },
-            "height": 360,
-            "background": "#0c1a27",
-            "config": {
-                "axis": {"labelColor": "#d9e7f2", "titleColor": "#d9e7f2", "gridColor": "#294158"},
-                "legend": {"labelColor": "#d9e7f2", "titleColor": "#d9e7f2"},
-                "view": {"stroke": "#36536b"},
-            },
-        },
-        use_container_width=True,
+    st.markdown(
+        render_angle_chart_svg(angle_records, float(st.session_state.phase)),
+        unsafe_allow_html=True,
     )
-    st.caption("Wykres pokazuje, jak zmieniają się kąty kolana i biodra w całym obrocie korby.")
+    knee_values = [float(r["Kąt [°]"]) for r in angle_records if r["Staw"] == "Kolano"]
+    hip_values = [float(r["Kąt [°]"]) for r in angle_records if r["Staw"] == "Biodro"]
+    c_knee, c_hip = st.columns(2)
+    if knee_values:
+        c_knee.metric("Kolano — zakres", f"{min(knee_values):.1f}–{max(knee_values):.1f}°")
+    if hip_values:
+        c_hip.metric("Biodro — zakres", f"{min(hip_values):.1f}–{max(hip_values):.1f}°")
+    st.caption("Zielona linia pokazuje kąt kolana, niebieska otwarcie biodra, a żółta linia aktualną pozycję korby.")
 
 with report_tab:
     st.subheader("Raport i kopia profilu")

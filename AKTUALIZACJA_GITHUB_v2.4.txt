@@ -1,0 +1,21 @@
+Aktualizacja BikeFit Studio Online v2.4
+
+Najprostsza aktualizacja:
+1. W repozytorium GitHub otwórz plik app.py.
+2. Kliknij ikonę ołówka / Edit this file.
+3. Zastąp całą zawartość plikiem app.py z wersji v2.4.
+4. Kliknij Commit changes.
+5. Poczekaj na automatyczne wdrożenie Streamlit.
+6. W razie potrzeby wybierz Manage app -> Reboot app i użyj Ctrl+F5.
+
+Nowości:
+- opcja „Nie znam przekroku — oblicz orientacyjnie z wzrostu”,
+- automatyczne wpisanie i aktualizowanie przekroku po zmianie wzrostu,
+- orientacyjny wzór: około 46,5% wzrostu,
+- pole przekroku jest blokowane w trybie automatycznym,
+- własny kontrastowy wykres SVG kątów kolana i biodra,
+- żółty znacznik aktualnej pozycji korby,
+- zakresy min./max. kątów pod wykresem.
+
+Uwaga:
+Automatycznie oszacowany przekrok jest wartością startową. Do dokładnego bikefittingu należy wykonać prawdziwy pomiar od podłogi do krocza.
