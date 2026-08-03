@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import streamlit as st
 import streamlit.components.v1 as components
 
+from bikefit.diagnostics import FitDiagnostic, explain_fit
 from bikefit.internet_import import fetch_geometry
 from bikefit.kinematics import analyze_cycle, bike_points, calculate_pose
 from bikefit.models import BikeGeometry, FitSettings, Rider
@@ -46,7 +47,7 @@ COUNTER_NAMESPACE = "misiek-bikefit-studio-online"
 COUNTER_API_BASE = "https://api.counterapi.dev/v1"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v3.1 — MisieK",
+    page_title="BikeFit Studio Online v3.2 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -339,6 +340,22 @@ button[data-testid="stBaseButton-primary"]:disabled {
 .config-row b {color:#ffffff !important;white-space:nowrap;}
 .config-note {padding:8px 0;color:#d8e7f3;line-height:1.45;}
 .config-warning {background:#2b2a16;border:1px solid #75661d;color:#ffd54f;padding:14px 16px;border-radius:13px;margin-top:12px;line-height:1.45;}
+.fit-diagnostic-wrap {margin:14px 0 18px;padding:18px;border-radius:18px;background:linear-gradient(145deg,#172535,#0d1b28);border:1px solid #4a6275;}
+.fit-diagnostic-wrap.bad {border-color:#b96852;background:linear-gradient(145deg,#2d1d20,#121b25);}
+.fit-diagnostic-wrap.good {border-color:#2e8a6b;background:linear-gradient(145deg,#123128,#0e2024);}
+.fit-diagnostic-title {font-size:1.25rem;font-weight:900;color:#f7fbff;margin-bottom:5px;}
+.fit-diagnostic-summary {color:#b9cad8;line-height:1.45;margin-bottom:12px;}
+.fit-diagnostic-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;}
+.fit-diagnostic-item {background:#10202e;border:1px solid #3b556b;border-left:5px solid #ffd166;border-radius:14px;padding:14px 15px;color:#edf7ff;}
+.fit-diagnostic-item.critical {border-left-color:#ff6c84;background:#291b23;}
+.fit-diagnostic-item.warning {border-left-color:#ffd166;}
+.fit-diagnostic-item.info {border-left-color:#67e4b5;}
+.fit-diagnostic-area {font-size:.76rem;text-transform:uppercase;letter-spacing:.07em;color:#9fb5c7;font-weight:800;}
+.fit-diagnostic-item h4 {margin:5px 0 7px;color:#ffffff !important;font-size:1.03rem;}
+.fit-diagnostic-measured {display:inline-block;margin:2px 0 9px;padding:5px 8px;border-radius:8px;background:#081521;color:#9fddff;font-weight:800;font-size:.85rem;}
+.fit-diagnostic-line {margin:6px 0;color:#d8e7f3;line-height:1.45;}
+.fit-diagnostic-line b {color:#ffffff;}
+.fit-diagnostic-correction {margin-top:9px;padding:9px 10px;border-radius:9px;background:#15352d;color:#8ff1cc;line-height:1.4;font-weight:700;}
 .measure-help {background:#0f1e2b;border:1px solid #304d64;border-radius:16px;padding:18px;margin-top:14px;color:#e7f3fc;}
 .measure-help h3 {color:#f5fbff !important;margin-top:0;}
 .measure-help div {padding:7px 0;border-bottom:1px solid #263d50;color:#d8e7f3;}
@@ -497,6 +514,41 @@ def external_link_button(label: str, url: str) -> None:
     st.markdown(
         f'<a class="external-link-btn" href="{safe_url}" target="_blank" rel="noopener noreferrer">{safe_label}</a>',
         unsafe_allow_html=True,
+    )
+
+
+def render_fit_diagnostics(diagnostics: list[FitDiagnostic], score: float) -> str:
+    if score >= 90.0:
+        return (
+            '<section class="fit-diagnostic-wrap good">'
+            '<div class="fit-diagnostic-title">✓ Ustawienie mieści się w dobrym zakresie modelu</div>'
+            f'<div class="fit-diagnostic-summary">Ocena {score:.1f}/100. Podstawowe kąty nie przekraczają progów wymagających ostrzeżenia. '
+            'Dalsze korekty wprowadzaj tylko małymi krokami i oceniaj je podczas jazdy.</div>'
+            '</section>'
+        )
+
+    cards = []
+    for item in diagnostics:
+        cards.append(
+            f'<article class="fit-diagnostic-item {html.escape(item.severity)}">'
+            f'<div class="fit-diagnostic-area">{html.escape(item.area)}</div>'
+            f'<h4>{html.escape(item.title)}</h4>'
+            f'<div class="fit-diagnostic-measured">{html.escape(item.measured)}</div>'
+            f'<div class="fit-diagnostic-line"><b>Dlaczego to jest nieprawidłowe:</b> {html.escape(item.why)}</div>'
+            f'<div class="fit-diagnostic-line"><b>Co może się dziać podczas jazdy:</b> {html.escape(item.possible_effect)}</div>'
+            f'<div class="fit-diagnostic-correction">Korekta: {html.escape(item.correction)}</div>'
+            '</article>'
+        )
+    cards_html = ''.join(cards) or (
+        '<article class="fit-diagnostic-item warning"><h4>Pozycja wymaga korekty</h4>'
+        '<div class="fit-diagnostic-line">Model wykrył łączne odchylenie kilku parametrów. Cofnij ostatnią zmianę suwaka i sprawdź wynik ponownie.</div></article>'
+    )
+    return (
+        '<section class="fit-diagnostic-wrap bad">'
+        '<div class="fit-diagnostic-title">Dlaczego to ustawienie będzie nieprawidłowe?</div>'
+        f'<div class="fit-diagnostic-summary">Ocena spadła do {score:.1f}/100. Poniżej 90/100 program pokazuje najbardziej prawdopodobne przyczyny, ich wpływ na pozycję i kierunek korekty.</div>'
+        f'<div class="fit-diagnostic-grid">{cards_html}</div>'
+        '</section>'
     )
 
 
@@ -1222,17 +1274,24 @@ def render_angle_chart_svg(
 def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     analysis = analyze_cycle(bike, rider, settings, samples=72)
     pressure = calculate_tire_pressure(rider, bike, settings)
+    diagnostics = explain_fit(bike, rider, settings, analysis, threshold=90.0)
     rows = "".join(f"<tr><td>{c}</td><td>{n}</td><td><b>{v}</b></td></tr>" for c,n,v,_ in measurement_values(bike,settings))
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
+    diagnostic_rows = "".join(
+        f"<li><b>{html.escape(item.title)}</b> — {html.escape(item.why)} "
+        f"<i>Korekta: {html.escape(item.correction)}</i></li>"
+        for item in diagnostics
+    ) or "<li>Ocena powyżej 90/100 — brak ostrzeżeń modelu.</li>"
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v3.1</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v3.2</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
     <h3>Kąty</h3><p>Kolano: {analysis.knee_flexion_min:.1f}–{analysis.knee_flexion_max:.1f}°. Biodro: {analysis.hip_angle_min:.1f}–{analysis.hip_angle_max:.1f}°. Łokieć: {analysis.elbow_angle:.1f}°.</p>
     <h3>Ciśnienie startowe</h3><p>Przód {pressure.front_bar:.2f} bar / {pressure.front_psi:.0f} psi; tył {pressure.rear_bar:.2f} bar / {pressure.rear_psi:.0f} psi.</p>
     <h3>Wskazówki</h3><ul>{notes}</ul>
+    <h3>Dlaczego ustawienie może być nieprawidłowe</h3><ul>{diagnostic_rows}</ul>
     <p><small>Wynik jest orientacyjny i nie zastępuje profesjonalnego bike fittingu ani konsultacji medycznej.</small></p></html>"""
 
 
@@ -1510,11 +1569,12 @@ with st.sidebar:
 settings = current_settings()
 rider = current_rider()
 analysis = analyze_cycle(bike, rider, settings, samples=72)
+fit_diagnostics = explain_fit(bike, rider, settings, analysis, threshold=90.0)
 pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v3.1</h1>
+  <h1>BikeFit Studio Online v3.2</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1528,6 +1588,8 @@ with m3:
     st.markdown(f'<div class="metric-card"><div class="metric-label">Ciśnienie przód</div><div class="metric-value">{pressure.front_bar:.2f} bar</div><div class="metric-note">{pressure.front_psi:.0f} psi</div></div>', unsafe_allow_html=True)
 with m4:
     st.markdown(f'<div class="metric-card"><div class="metric-label">Ciśnienie tył</div><div class="metric-value">{pressure.rear_bar:.2f} bar</div><div class="metric-note">{pressure.rear_psi:.0f} psi</div></div>', unsafe_allow_html=True)
+
+st.markdown(render_fit_diagnostics(fit_diagnostics, analysis.score), unsafe_allow_html=True)
 
 main_tab, config_tab, tire_tab, geometry_tab, import_tab, angles_tab, report_tab = st.tabs([
     "Symulacja", "Wymiary i konfigurator", "Opony i ciśnienie", "Geometria roweru", "Import online", "Wykresy kątów", "Raport",
@@ -1647,6 +1709,7 @@ with config_tab:
     guide_html = "".join(
         f'<div>• {html.escape(str(line))}</div>' for line in measurement_guide(bike, settings)
     )
+    diagnostic_detail_html = render_fit_diagnostics(fit_diagnostics, analysis.score)
     config_html = f'''
         <div class="config-grid">
           <section class="config-card"><h3>Aktualne ustawienie</h3>{rows_html}</section>
@@ -1654,6 +1717,7 @@ with config_tab:
             <div class="config-warning">Wprowadzaj zmiany na prawdziwym rowerze stopniowo, zwykle po 2–5 mm, i testuj każdą zmianę podczas jazdy.</div>
           </section>
         </div>
+        {diagnostic_detail_html}
         <section class="measure-help"><h3>Jak zmierzyć samą metrówką</h3>{guide_html}</section>
     '''
     st.markdown(config_html, unsafe_allow_html=True)
@@ -1803,5 +1867,5 @@ with report_tab:
 
 render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online v3.1 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
+<div class="footer-note">BikeFit Studio Online v3.2 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
 """, unsafe_allow_html=True)

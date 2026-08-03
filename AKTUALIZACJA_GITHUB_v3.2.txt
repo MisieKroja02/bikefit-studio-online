@@ -1,0 +1,18 @@
+Aktualizacja BikeFit Studio Online v3.2
+
+Najprostsza metoda:
+1. Otwórz repozytorium aplikacji na GitHubie.
+2. Podmień plik app.py.
+3. Dodaj nowy plik bikefit/diagnostics.py.
+4. Kliknij Commit changes.
+5. Poczekaj na automatyczne wdrożenie Streamlit.
+6. W razie potrzeby wybierz Manage app -> Reboot app i odśwież Ctrl+F5.
+
+Nowości v3.2:
+- dynamiczne wyjaśnienie, dlaczego ustawienie jest nieprawidłowe,
+- komentarze pojawiają się przy ocenie poniżej 90/100,
+- program wskazuje konkretny parametr, zmierzony kąt i poprawny zakres,
+- wyjaśnia możliwy wpływ ustawienia podczas jazdy,
+- podaje kierunek i orientacyjną wielkość korekty,
+- komentarze reagują na suwaki wysokości i przesunięcia siodła oraz ustawienia kierownicy,
+- diagnostyka jest dodawana także do raportu HTML.

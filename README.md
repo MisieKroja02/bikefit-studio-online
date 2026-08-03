@@ -1,4 +1,4 @@
-# BikeFit Studio Online v3.1
+# BikeFit Studio Online v3.2
 
 Internetowy konfigurator pozycji na rowerze. Autor: **MisieK**.
 
@@ -73,3 +73,15 @@ Program jest narzędziem orientacyjnym. Nie zastępuje profesjonalnego bike fitt
 - przed zapisaniem można wpisać własną nazwę geometrii,
 - nazwa pojawia się na wspólnej liście rowerów zamiast tytułu strony lub adresu URL,
 - zapis pod istniejącą nazwą aktualizuje daną geometrię, a nowa nazwa tworzy nową pozycję.
+
+## Nowości v3.2 — wyjaśnianie nieprawidłowej pozycji
+
+Gdy ocena spadnie poniżej 90/100, aplikacja wyjaśnia:
+
+- który parametr jest prawdopodobnie ustawiony nieprawidłowo,
+- jaki kąt lub zakres wyszedł poza granice modelu,
+- dlaczego dana pozycja jest biomechanicznie niekorzystna,
+- jakie objawy mogą pojawić się podczas jazdy,
+- w którą stronę i o ile orientacyjnie zmienić ustawienie.
+
+Komentarze reagują na wysokość i przesunięcie siodła, wysokość i zasięg kierownicy, otwarcie biodra, kąt łokcia oraz pochylenie tułowia.
