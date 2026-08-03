@@ -35,7 +35,7 @@ COUNTER_DOMAIN = "bikefitstudio.streamlit.app"
 COUNTER_API = "https://visitor.6developer.com/visit"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v2.8 — MisieK",
+    page_title="BikeFit Studio Online v2.9 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -89,7 +89,7 @@ CSS = """
 .metric-note {font-size:.8rem; color:#8fa7bb; margin-top:3px;}
 .info-card {padding:15px 17px;border-radius:16px;background:#10202e;border:1px solid #314b61;margin-bottom:10px;}
 .small-muted {color:#9fb5c7;font-size:.85rem;}
-.measure-grid {display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:10px;margin:8px 0 14px;}
+.measure-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin:8px 0 14px;}
 .measure-card {padding:12px;border-radius:14px;background:#101f2d;border:1px solid #314b61;}
 .measure-code {font-weight:900;font-size:1rem;}
 .measure-name {color:#b8cad9;font-size:.78rem;min-height:34px;margin-top:4px;}
@@ -846,6 +846,15 @@ def palette(bike_type: str) -> dict[str, str]:
     return {"frame": "#87baff", "dark": "#426fa7", "halo": "#132b40", "tire": "#32373d"}
 
 
+def saddle_shift_description(value_mm: float) -> tuple[str, str, str]:
+    value = float(value_mm)
+    if value > 0.5:
+        return f"{abs(value):.0f} mm", "do przodu", f"+{abs(value):.0f} mm → PRZÓD"
+    if value < -0.5:
+        return f"{abs(value):.0f} mm", "do tyłu", f"{value:.0f} mm ← TYŁ"
+    return "0 mm", "pozycja neutralna", "0 mm · POZYCJA NEUTRALNA"
+
+
 def render_bike_svg(
     bike: BikeGeometry,
     rider: Rider,
@@ -976,6 +985,8 @@ def render_bike_svg(
     bb = (0.0, 0.0); saddle = bp["saddle"]; hand = bp["hand"]
     sta = math.radians(bike.seat_tube_angle)
     saddle_axis_top = (-settings.saddle_height * math.cos(sta), settings.saddle_height * math.sin(sta))
+    neutral_saddle = saddle_axis_top
+    shift_value, shift_direction, shift_short = saddle_shift_description(settings.saddle_fore_aft)
     setback = max(0.0, -saddle[0]); drop = saddle[1] - hand[1]; reach = hand[0] - saddle[0]
     mx = {"M1":"#ffd166","M2":"#57d3ff","M3":"#ff83c6","M4":"#8dea7b","M5":"#ff9f5a"}
 
@@ -990,7 +1001,20 @@ def render_bike_svg(
         midx = (bx + saxt) / 2 - 18; midy = (by + sayt) / 2
         parts.append(callout(midx, midy, "M1 wysokość siodła", f"{settings.saddle_height:.0f} mm po osi sztycy", mx["M1"], "end"))
 
-        m2y = min(sy2, hy) - 64
+        # Osobna regulacja siodła na szynach: pozycja neutralna osi sztycy -> rzeczywisty punkt S75.
+        nx, ny = T(neutral_saddle)
+        shift_color = "#b991ff"
+        if abs(float(settings.saddle_fore_aft)) > 0.5:
+            parts.append(f'<circle cx="{nx:.1f}" cy="{ny:.1f}" r="5" fill="none" stroke="{shift_color}" stroke-width="2"/>')
+            parts.append(f'<line x1="{nx:.1f}" y1="{ny-20:.1f}" x2="{sx2:.1f}" y2="{sy2-20:.1f}" stroke="{shift_color}" stroke-width="3.4" marker-start="url(#arr)" marker-end="url(#arr)"/>')
+            shift_label_x = (nx + sx2) / 2
+            shift_label_y = min(ny, sy2) - 48
+        else:
+            shift_label_x = sx2
+            shift_label_y = sy2 - 48
+        parts.append(callout(shift_label_x, shift_label_y, "REGULACJA NA SZYNACH", shift_short, shift_color))
+
+        m2y = min(sy2, hy) - 102
         parts.append(f'<line x1="{bx:.1f}" y1="{by:.1f}" x2="{bx:.1f}" y2="{m2y:.1f}" stroke="{mx["M2"]}" stroke-width="2" stroke-dasharray="7 6" opacity="0.9"/>')
         parts.append(f'<line x1="{sx2:.1f}" y1="{sy2:.1f}" x2="{sx2:.1f}" y2="{m2y:.1f}" stroke="{mx["M2"]}" stroke-width="2" stroke-dasharray="7 6" opacity="0.9"/>')
         parts.append(dim_line(bx, m2y, sx2, m2y, mx["M2"]))
@@ -1040,8 +1064,10 @@ def measurement_values(bike: BikeGeometry, settings: FitSettings) -> list[tuple[
     setback = max(0.0, -bp["saddle"][0])
     drop = bp["saddle"][1] - bp["hand"][1]
     reach = bp["hand"][0] - bp["saddle"][0]
+    shift_value, shift_direction, _ = saddle_shift_description(settings.saddle_fore_aft)
     return [
         ("M1", "Wysokość po osi rury i sztycy", f"{settings.saddle_height:.0f} mm", "#ffd166"),
+        ("REG", "Przesunięcie siodła na szynach względem pozycji neutralnej", f"{shift_value} {shift_direction}", "#b991ff"),
         ("M2", "Setback punktu S75 względem pionu BB", f"{setback:.0f} mm za BB", "#57d3ff"),
         ("M3", "Pionowy drop S75 → chwyt H", f"{drop:.0f} mm", "#ff83c6"),
         ("M4", "Poziomy reach S75 → chwyt H", f"{reach:.0f} mm", "#8dea7b"),
@@ -1137,7 +1163,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v2.8</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v2.9</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1338,7 +1364,9 @@ with st.sidebar:
 
     st.markdown("#### Regulacja")
     st.slider("M1 wysokość siodła [mm]", 500.0, 900.0, key="saddle_height", step=1.0)
-    st.slider("Regulacja siodła na szynach [mm]", -60.0, 80.0, key="saddle_fore_aft", step=1.0)
+    st.slider("Przesunięcie siodła na szynach [mm] (+ przód / − tył)", -60.0, 80.0, key="saddle_fore_aft", step=1.0)
+    _shift_value, _shift_direction, _ = saddle_shift_description(float(st.session_state.saddle_fore_aft))
+    st.info(f"Ustaw siodło: **{_shift_value} {_shift_direction}** względem pozycji neutralnej na szynach.")
     st.slider("Zmiana wysokości kierownicy [mm]", -60.0, 100.0, key="handlebar_stack_delta", step=1.0)
     st.slider("Zmiana zasięgu kierownicy [mm]", -80.0, 80.0, key="handlebar_reach_delta", step=1.0)
     st.slider("Kąt stopy [°]", -20.0, 15.0, key="foot_angle", step=1.0)
@@ -1351,7 +1379,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v2.8</h1>
+  <h1>BikeFit Studio Online v2.9</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1447,6 +1475,14 @@ with main_tab:
     )
     st.markdown(f'<div class="measure-grid">{cards}</div>', unsafe_allow_html=True)
 
+    _shift_value, _shift_direction, _ = saddle_shift_description(settings.saddle_fore_aft)
+    _bp_for_shift = bike_points(bike, settings)
+    _setback_for_shift = max(0.0, -_bp_for_shift["saddle"][0])
+    st.success(
+        f"**Wynik ustawienia siodła:** przesuń siodło **{_shift_value} {_shift_direction}** na szynach względem pozycji neutralnej. "
+        f"Po ustawieniu punkt S75 powinien mieć około **{_setback_for_shift:.0f} mm setbacku za osią suportu (BB)**."
+    )
+
     a1, a2, a3, a4 = st.columns(4)
     a1.info(f"**Kolano:** {analysis.knee_flexion_min:.1f}–{analysis.knee_flexion_max:.1f}°")
     a2.info(f"**Biodro:** {analysis.hip_angle_min:.1f}–{analysis.hip_angle_max:.1f}°")
@@ -1458,7 +1494,7 @@ with main_tab:
 with config_tab:
     setting_rows = [
         ("Wysokość siodła", f"{settings.saddle_height:.0f} mm"),
-        ("Regulacja siodła na szynach", f"{settings.saddle_fore_aft:+.0f} mm"),
+        ("Przesunięcie siodła na szynach", f"{saddle_shift_description(settings.saddle_fore_aft)[0]} {saddle_shift_description(settings.saddle_fore_aft)[1]}"),
         ("Kierownica — wysokość", f"{settings.handlebar_stack_delta:+.0f} mm"),
         ("Kierownica — zasięg", f"{settings.handlebar_reach_delta:+.0f} mm"),
         ("Pochylenie tułowia", f"{analysis.torso_angle:.1f}°"),
@@ -1629,5 +1665,5 @@ with report_tab:
 
 render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online v2.8 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik zewnętrzny, bez cookies.</span></div>
+<div class="footer-note">BikeFit Studio Online v2.9 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik zewnętrzny, bez cookies.</span></div>
 """, unsafe_allow_html=True)

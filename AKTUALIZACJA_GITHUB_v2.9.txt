@@ -1,0 +1,15 @@
+Aktualizacja BikeFit Studio Online v2.9
+
+1. W repozytorium GitHub otwórz plik app.py.
+2. Kliknij ikonę ołówka / Edit this file.
+3. Podmień całą zawartość na plik app.py z wersji v2.9.
+4. Kliknij Commit changes.
+5. W Streamlit użyj Manage app -> Reboot app, jeżeli aplikacja nie odświeży się automatycznie.
+6. W przeglądarce naciśnij Ctrl+F5.
+
+Nowości:
+- osobny wynik REG: przesunięcie siodła na szynach,
+- czytelny kierunek: do przodu / do tyłu / pozycja neutralna,
+- strzałka regulacji bezpośrednio przy siodle na rysunku,
+- osobna karta REG pod symulacją,
+- komunikat z końcowym setbackiem S75 względem osi suportu.

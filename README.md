@@ -44,8 +44,9 @@ Usunięto modyfikowanie aktywnego `st.session_state` przez `sanitize_numeric_sta
 Sterowanie animacją zostało przeniesione bezpośrednio pod rysunek roweru. Obejmuje kadencję, pozycję korby, Play/Pauza/Reset, prędkość animacji, skalę oraz przełączniki kątów i wymiarów M1–M5.
 
 
-## Nowości v2.8
+## Nowości v2.9
 
-- licznik odwiedzin umieszczony w stopce,
-- wyświetlanie liczby wszystkich odwiedzin i odwiedzin dzisiejszych,
-- licznik działa przez zewnętrzne API i nie wymaga tokenu ani bazy na GitHubie.
+- osobna informacja o przesunięciu siodła na szynach,
+- kierunek do przodu / do tyłu,
+- strzałka regulacji na rysunku,
+- rozdzielenie regulacji na szynach od rzeczywistego setbacku S75.
