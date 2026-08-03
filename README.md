@@ -1,4 +1,4 @@
-# BikeFit Studio Online v2.4
+# BikeFit Studio Online v2.5
 
 Internetowy konfigurator pozycji na rowerze. Autor: **MisieK**.
 
@@ -24,12 +24,12 @@ Dane nie są zapisywane na GitHubie ani na stałe na serwerze. Każdy użytkowni
 Podmień `app.py` w głównym katalogu repozytorium, wykonaj commit i w razie potrzeby uruchom `Manage app → Reboot app`.
 
 
-## Poprawka v2.4
+## Poprawka v2.5
 
 Usunięto modyfikowanie aktywnego `st.session_state` przez `sanitize_numeric_state()` po utworzeniu widżetów. Sanitizacja działa teraz tylko na początku przebiegu aplikacji.
 
 
-## Nowości v2.4
+## Nowości v2.5
 
 - płynna animacja wykonywana po stronie przeglądarki,
 - właściwy kierunek obrotu korby,
@@ -37,3 +37,8 @@ Usunięto modyfikowanie aktywnego `st.session_state` przez `sanitize_numeric_sta
 - bezpieczny przycisk sugerowanego rozkładu masy,
 - tryb viewer dla paska Streamlit,
 - czysty link do udostępniania: `https://bikefitstudio.streamlit.app/?embed=true&embed_options=dark_theme&embed_options=hide_loading_screen`.
+
+
+## Nowość v2.5
+
+Obliczony orientacyjny przekrok jest automatycznie wpisywany bezpośrednio do pola przekroku i aktualizowany po zmianie wzrostu.

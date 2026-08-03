@@ -33,7 +33,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v2.4 — MisieK",
+    page_title="BikeFit Studio Online v2.5 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -1049,7 +1049,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v2.4</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v2.5</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1147,6 +1147,15 @@ with st.sidebar:
 
     st.markdown("#### Rowerzysta")
     st.text_input("Nazwa profilu", key="profile_name")
+
+    # Opcja jest renderowana przed polem przekroku. Dzięki temu wartość
+    # orientacyjna trafia do session_state zanim Streamlit utworzy widżet.
+    auto_inseam_enabled = st.checkbox(
+        "Nie znam przekroku — oblicz orientacyjnie z wzrostu",
+        key="auto_inseam",
+        on_change=sync_estimated_inseam,
+    )
+
     c1, c2 = st.columns(2)
     c1.number_input(
         "Wzrost [mm]",
@@ -1156,24 +1165,28 @@ with st.sidebar:
         step=1.0,
         on_change=sync_estimated_inseam,
     )
+
+    if auto_inseam_enabled:
+        calculated_inseam = estimate_inseam_from_height(float(st.session_state.height))
+        # Pole jeszcze nie zostało utworzone w tym przebiegu, więc ustawienie
+        # wartości jest bezpieczne i od razu widoczne w interfejsie.
+        st.session_state.inseam = float(calculated_inseam)
+
     c2.number_input(
         "Przekrok [mm]",
         600.0,
         1100.0,
         key="inseam",
         step=1.0,
-        disabled=bool(st.session_state.get("auto_inseam", False)),
+        format="%.0f",
+        disabled=auto_inseam_enabled,
         help="Najdokładniej zmierzyć od podłogi do krocza przy ścianie. Możesz też użyć wartości orientacyjnej z wzrostu.",
     )
-    st.checkbox(
-        "Nie znam przekroku — oblicz orientacyjnie z wzrostu",
-        key="auto_inseam",
-        on_change=sync_estimated_inseam,
-    )
-    if bool(st.session_state.get("auto_inseam", False)):
+
+    if auto_inseam_enabled:
         st.caption(
-            f"Wpisano orientacyjnie **{float(st.session_state.inseam):.0f} mm** "
-            f"(około 46,5% wzrostu). Do dokładnego ustawienia roweru warto później wykonać prawdziwy pomiar."
+            f"Wpisano automatycznie **{float(st.session_state.inseam):.0f} mm** "
+            f"(około 46,5% wzrostu). Wartość jest aktualizowana po każdej zmianie wzrostu."
         )
     c3, c4 = st.columns(2)
     c3.number_input("Masa [kg]", 35.0, 220.0, key="weight", step=0.5)
@@ -1259,7 +1272,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v2.4</h1>
+  <h1>BikeFit Studio Online v2.5</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)

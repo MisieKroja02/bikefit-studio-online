@@ -1,0 +1,14 @@
+Aktualizacja BikeFit Studio Online v2.5
+
+1. Otwórz plik app.py w repozytorium GitHub.
+2. Kliknij ikonę ołówka / Edit this file.
+3. Podmień zawartość na plik app.py z wersji v2.5.
+4. Kliknij Commit changes.
+5. W Streamlit użyj Manage app -> Reboot app, jeśli nowa wersja nie pojawi się automatycznie.
+6. Odśwież stronę przez Ctrl+F5.
+
+Zmiana v2.5:
+- opcja „Nie znam przekroku” jest wyświetlana przed polem przekroku,
+- obliczona wartość jest automatycznie wpisywana bezpośrednio w pole „Przekrok [mm]”,
+- wartość aktualizuje się po każdej zmianie wzrostu,
+- pole pokazuje pełne milimetry bez części dziesiętnej.
