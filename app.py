@@ -24,11 +24,11 @@ from bikefit.shared_store import (
     SharedStoreError,
     build_store_document,
     config_from_mapping,
-    load_local_bikes,
+    load_local_geometry_folder,
     load_remote_bikes,
     merge_bike_payloads,
     parse_store_document,
-    save_local_bike,
+    save_local_geometry_file,
     save_remote_bike,
 )
 from bikefit.recommendations import measurement_guide, recommend_and_evaluate
@@ -46,12 +46,13 @@ from bikefit.tire_pressure import (
 ROOT = Path(__file__).resolve().parent
 BIKES_FILE = ROOT / "data" / "bikes.json"
 COMMUNITY_BIKES_FILE = ROOT / "data" / "community_bikes.json"
+COMMUNITY_BIKES_DIR = ROOT / "data" / "user_geometries"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 COUNTER_NAMESPACE = "misiek-bikefit-studio-online"
 COUNTER_API_BASE = "https://api.counterapi.dev/v1"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v3.3 — MisieK",
+    page_title="BikeFit Studio Online v3.4 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -450,8 +451,8 @@ def load_remote_shared_bikes_cached(
 
 
 @st.cache_data(ttl=15, show_spinner=False)
-def load_local_shared_bikes_cached(path_text: str) -> list[dict[str, object]]:
-    return load_local_bikes(Path(path_text))
+def load_local_shared_bikes_cached(folder_text: str, legacy_text: str) -> list[dict[str, object]]:
+    return load_local_geometry_folder(Path(folder_text), Path(legacy_text))
 
 
 def geometry_store_config() -> GeometryStoreConfig | None:
@@ -470,12 +471,13 @@ def load_shared_geometry_payloads() -> tuple[list[dict[str, object]], bool, str]
             bikes = load_remote_shared_bikes_cached(
                 config.owner, config.repo, config.branch, config.path, config.token
             )
-            return bikes, True, f"Wspólna baza online: {len(bikes)} geometrii"
+            label = "Trwały folder online" if config.folder_mode else "Wspólna baza online"
+            return bikes, True, f"{label}: {len(bikes)} geometrii"
         except SharedStoreError:
             # Awaria zewnętrznego magazynu nie może zatrzymać konfiguratora.
-            local = load_local_shared_bikes_cached(str(COMMUNITY_BIKES_FILE))
+            local = load_local_shared_bikes_cached(str(COMMUNITY_BIKES_DIR), str(COMMUNITY_BIKES_FILE))
             return local, False, "Wspólna baza chwilowo niedostępna — używam kopii lokalnej"
-    local = load_local_shared_bikes_cached(str(COMMUNITY_BIKES_FILE))
+    local = load_local_shared_bikes_cached(str(COMMUNITY_BIKES_DIR), str(COMMUNITY_BIKES_FILE))
     return local, False, f"Baza lokalna: {len(local)} geometrii"
 
 
@@ -487,8 +489,10 @@ def persist_shared_geometry(bike: BikeGeometry, saved_by: str) -> tuple[bool, st
         if config is not None:
             save_remote_bike(config, payload, saved_by=saved_by)
             load_remote_shared_bikes_cached.clear()
+            if config.folder_mode:
+                return True, "Geometria została zapisana jako osobny plik w trwałym folderze i będzie widoczna dla innych osób."
             return True, "Geometria została zapisana we wspólnej bazie i będzie widoczna dla innych osób."
-        save_local_bike(COMMUNITY_BIKES_FILE, payload, saved_by=saved_by)
+        save_local_geometry_file(COMMUNITY_BIKES_DIR, payload, saved_by=saved_by)
         load_local_shared_bikes_cached.clear()
         return False, "Geometria została zapisana na bieżącym serwerze. Włącz trwałą wspólną bazę, aby zachować ją po ponownym wdrożeniu."
     except (SharedStoreError, OSError) as exc:
@@ -1334,7 +1338,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     ) or "<li>Ocena powyżej 90/100 — brak ostrzeżeń modelu.</li>"
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v3.3</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v3.4</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1642,7 +1646,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v3.3</h1>
+  <h1>BikeFit Studio Online v3.4</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1981,5 +1985,5 @@ with report_tab:
 
 render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online v3.3 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
+<div class="footer-note">BikeFit Studio Online v3.4 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
 """, unsafe_allow_html=True)

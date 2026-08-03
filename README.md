@@ -1,8 +1,8 @@
-# BikeFit Studio Online v3.3
+# BikeFit Studio Online v3.4
 
 Internetowy konfigurator ustawienia pozycji na rowerze.
 
-## Nowości v3.3
+## Nowości v3.4
 
 - ocena, czy wybrana rama jest odpowiednia dla rowerzysty,
 - wykrywanie ramy prawdopodobnie za małej lub za dużej,
@@ -26,3 +26,8 @@ streamlit run app.py
 ```
 
 Autor: MisieK
+
+
+## Trwały folder geometrii — v3.4
+
+Dodane przez użytkowników geometrie mogą być zapisywane jako osobne pliki JSON w folderze `geometries/` w oddzielnym repozytorium danych. Dzięki temu aktualizacja kodu aplikacji nie usuwa zapisanych rowerów. Szczegóły znajdują się w pliku `KONFIGURACJA_TRWALEGO_FOLDERU_GEOMETRII.txt`.

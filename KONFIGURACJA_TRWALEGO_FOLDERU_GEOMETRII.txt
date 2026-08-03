@@ -1,0 +1,51 @@
+KONFIGURACJA TRWAŁEGO FOLDERU GEOMETRII
+BikeFit Studio Online v3.4
+
+CEL
+Każda geometria jest zapisywana jako osobny plik JSON w oddzielnym repozytorium danych:
+
+geometries/
+  kross-esker-7-0-2025-m-xxxxxxxxxx.json
+  ghost-asket-cf-2025-l-xxxxxxxxxx.json
+  inny-rower-xxxxxxxxxx.json
+
+Zmiana app.py, aktualizacja programu i ponowne wdrożenie Streamlit nie usuwają tego folderu.
+
+KROK 1 — REPOZYTORIUM DANYCH
+1. Na GitHubie utwórz repozytorium: bikefit-studio-data
+2. Może być Private.
+3. Zaznacz Add a README file, aby powstała gałąź main.
+
+KROK 2 — TOKEN
+1. GitHub -> Settings -> Developer settings -> Personal access tokens -> Fine-grained tokens.
+2. Utwórz token tylko dla repozytorium bikefit-studio-data.
+3. Repository permissions -> Contents -> Read and write.
+4. Skopiuj token. Nie wklejaj go do app.py ani do publicznego repozytorium.
+
+KROK 3 — STREAMLIT SECRETS
+W Streamlit otwórz Manage app -> Settings -> Secrets i wklej:
+
+[geometry_store]
+token = "github_pat_TUTAJ_TOKEN"
+owner = "MisieKroja02"
+repo = "bikefit-studio-data"
+branch = "main"
+path = "geometries"
+legacy_path = "community_bikes.json"
+
+Następnie zapisz i użyj Reboot app.
+
+JAK TO DZIAŁA
+- Pierwszy zapis automatycznie utworzy folder geometries.
+- Każdy rower dostanie osobny plik JSON.
+- Ta sama nazwa geometrii aktualizuje ten sam plik.
+- Nowa nazwa tworzy nowy plik.
+- Geometrie są wspólne dla wszystkich użytkowników linku.
+- Dane profilu, wzrost, masa i pseudonim nie są zapisywane w tym folderze.
+- Parametr legacy_path pozwala nadal wyświetlić geometrie zapisane wcześniej w jednym pliku community_bikes.json.
+
+KONTROLA
+Po poprawnym uruchomieniu w panelu bocznym zobaczysz:
+Trwały folder online: X geometrii
+
+Jeżeli widzisz Baza lokalna, konfiguracja Secrets nie jest aktywna. Lokalny folder serwera Streamlit może zniknąć przy kolejnym wdrożeniu.

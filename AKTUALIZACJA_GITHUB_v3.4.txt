@@ -1,0 +1,14 @@
+AKTUALIZACJA BIKEFIT STUDIO ONLINE DO v3.4
+
+Podmień na GitHubie:
+1. app.py
+2. bikefit/shared_store.py
+
+Opcjonalnie wgraj też:
+3. data/user_geometries/README.txt
+4. .streamlit/secrets.example.toml
+
+Aby zapis był trwały niezależnie od aktualizacji programu, wykonaj instrukcję:
+KONFIGURACJA_TRWALEGO_FOLDERU_GEOMETRII.txt
+
+Po Commit changes użyj w Streamlit Manage app -> Reboot app i odśwież stronę Ctrl+F5.

@@ -145,9 +145,10 @@ def test_full_app_dry_run_without_real_streamlit(monkeypatch, tmp_path):
     assert fake.session_state["weight"] == 75.0
 
     # Integracja lokalnej wspólnej bazy z listą geometrii.
+    module.COMMUNITY_BIKES_DIR = tmp_path / "user_geometries"
     module.COMMUNITY_BIKES_FILE = tmp_path / "community.json"
-    module.save_local_bike(
-        module.COMMUNITY_BIKES_FILE,
+    module.save_local_geometry_file(
+        module.COMMUNITY_BIKES_DIR,
         {"name": "Wspólny test", "bike_type": "Gravel", "stack": 580.0, "reach": 390.0},
         saved_by="Tester",
     )
