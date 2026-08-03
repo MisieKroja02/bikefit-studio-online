@@ -33,7 +33,7 @@ BIKES_FILE = ROOT / "data" / "bikes.json"
 LOGO_FILE = ROOT / "assets" / "logo_misiek.png"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v2.6 — MisieK",
+    page_title="BikeFit Studio Online v2.7 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -236,7 +236,69 @@ li[role="option"]:hover, li[role="option"][aria-selected="true"] {background:#31
 [data-testid="stSidebar"] [data-testid="stAlert"] {
   color:#f7fbff !important;
 }
-.stButton > button, .stDownloadButton > button {border-radius:12px;font-weight:700;}
+/* Wszystkie przyciski w aplikacji — ciemne tło zamiast białego. */
+.stButton > button,
+.stDownloadButton > button,
+button[data-testid="stBaseButton-secondary"],
+button[kind="secondary"] {
+  background:#173047 !important;
+  color:#ffffff !important;
+  border:1px solid #466985 !important;
+  border-radius:12px !important;
+  font-weight:700 !important;
+  box-shadow:none !important;
+}
+.stButton > button p,
+.stButton > button span,
+.stDownloadButton > button p,
+.stDownloadButton > button span,
+button[data-testid="stBaseButton-secondary"] p,
+button[data-testid="stBaseButton-secondary"] span {
+  color:#ffffff !important;
+}
+.stButton > button:hover,
+.stDownloadButton > button:hover,
+button[data-testid="stBaseButton-secondary"]:hover,
+button[kind="secondary"]:hover {
+  background:#214661 !important;
+  color:#ffffff !important;
+  border-color:#6d9abc !important;
+}
+.stButton > button:focus,
+.stDownloadButton > button:focus,
+button[data-testid="stBaseButton-secondary"]:focus {
+  outline:2px solid #67e4b5 !important;
+  outline-offset:2px !important;
+  box-shadow:none !important;
+}
+button[data-testid="stBaseButton-primary"],
+button[kind="primary"] {
+  background:#2f8f72 !important;
+  color:#ffffff !important;
+  border:1px solid #67e4b5 !important;
+  border-radius:12px !important;
+  font-weight:800 !important;
+}
+button[data-testid="stBaseButton-primary"] p,
+button[data-testid="stBaseButton-primary"] span,
+button[kind="primary"] p,
+button[kind="primary"] span {
+  color:#ffffff !important;
+}
+button[data-testid="stBaseButton-primary"]:hover,
+button[kind="primary"]:hover {
+  background:#3ba886 !important;
+  border-color:#8ff2cd !important;
+}
+.stButton > button:disabled,
+.stDownloadButton > button:disabled,
+button[data-testid="stBaseButton-secondary"]:disabled,
+button[data-testid="stBaseButton-primary"]:disabled {
+  background:#263746 !important;
+  color:#8195a7 !important;
+  border-color:#3c5062 !important;
+  opacity:1 !important;
+}
 
 /* Zawartość zakładek zawsze aktywna i czytelna, także po animacji/odświeżeniu. */
 [data-testid="stTabs"] [role="tabpanel"] {
@@ -992,7 +1054,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     notes = "".join(f"<li>{html.escape(note)}</li>" for note in analysis.messages)
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v2.6</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v2.7</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1205,7 +1267,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v2.6</h1>
+  <h1>BikeFit Studio Online v2.7</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)

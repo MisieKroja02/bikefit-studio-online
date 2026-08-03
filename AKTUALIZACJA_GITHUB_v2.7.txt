@@ -1,0 +1,13 @@
+Aktualizacja BikeFit Studio Online v2.7
+
+1. Otwórz plik app.py w repozytorium GitHub.
+2. Kliknij ikonę ołówka / Edit this file.
+3. Podmień zawartość na plik app.py z wersji v2.7.
+4. Kliknij Commit changes.
+5. W Streamlit użyj Manage app -> Reboot app, jeśli zmiana nie pojawi się automatycznie.
+6. Odśwież stronę Ctrl+F5.
+
+Zmiana v2.7:
+- wszystkie przyciski mają ciemne tło i jasny tekst,
+- poprawiono wygląd Play, Pauza, Reset i pozostałych przycisków,
+- dodano czytelne stany hover, focus i disabled.

@@ -39,6 +39,13 @@ Usunięto modyfikowanie aktywnego `st.session_state` przez `sanitize_numeric_sta
 - czysty link do udostępniania: `https://bikefitstudio.streamlit.app/?embed=true&embed_options=dark_theme&embed_options=hide_loading_screen`.
 
 
-## Zmiany v2.6
+## Zmiany v2.7
 
 Sterowanie animacją zostało przeniesione bezpośrednio pod rysunek roweru. Obejmuje kadencję, pozycję korby, Play/Pauza/Reset, prędkość animacji, skalę oraz przełączniki kątów i wymiarów M1–M5.
+
+
+## Zmiany v2.7
+
+- ciemne tło wszystkich przycisków,
+- jasny tekst na przyciskach,
+- poprawione stany aktywne i nieaktywne.
