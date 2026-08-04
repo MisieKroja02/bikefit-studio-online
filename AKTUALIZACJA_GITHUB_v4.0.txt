@@ -1,0 +1,17 @@
+BikeFit Studio Online v4.0 — aktualizacja
+
+Najprościej:
+1. Pobierz pełny ZIP v4.0.
+2. Rozpakuj paczkę.
+3. W repozytorium GitHub podmień plik app.py.
+4. Pozostałe moduły bikefit mogą pozostać z v3.8, ale zalecane jest wgranie pełnej zawartości paczki.
+5. Wykonaj Commit changes.
+6. W Streamlit użyj Manage app -> Reboot app i odśwież stronę Ctrl+F5.
+
+Nowa funkcja:
+- zakładka „📏 Pomiary roweru”,
+- wybór dwóch punktów kliknięciem,
+- gotowe pomiary warsztatowe,
+- odległość prosta, pozioma i pionowa oraz kąt,
+- instrukcje wykonania pomiaru zwykłą metrówką,
+- charakterystyczne punkty BB, S75, osie kół, główka, mostek, chwyt i pedał.

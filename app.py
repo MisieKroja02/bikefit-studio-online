@@ -54,7 +54,7 @@ COUNTER_NAMESPACE = "misiek-bikefit-studio-online"
 COUNTER_API_BASE = "https://api.counterapi.dev/v1"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v3.8 — MisieK",
+    page_title="BikeFit Studio Online v4.0 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -1256,6 +1256,126 @@ def render_bike_svg(
     return "".join(parts)
 
 
+
+def render_interactive_measurements(bike: BikeGeometry, settings: FitSettings) -> None:
+    """Interaktywny przyrząd pomiarowy działający całkowicie w przeglądarce."""
+    bp = bike_points(bike, settings)
+    ground_y = bike.bb_drop - bike.wheel_radius
+    sta = math.radians(bike.seat_tube_angle)
+    saddle_axis = (-settings.saddle_height * math.cos(sta), settings.saddle_height * math.sin(sta))
+    saddle = bp["saddle"]
+    saddle_nose = (saddle[0] + 78.0, saddle[1] - 2.0)
+    saddle_rear = (saddle[0] - 82.0, saddle[1] + 2.0)
+    hood = bp["hand"]
+    pedal = (bike.crank_length, 0.0)
+    rear_contact = (bp["rear_axle"][0], ground_y)
+    front_contact = (bp["front_axle"][0], ground_y)
+    top_mid = ((bp["seat_top"][0] + bp["head_top"][0]) / 2, (bp["seat_top"][1] + bp["head_top"][1]) / 2)
+    raw_points = {
+        "bb": ("BB — środek suportu", (0.0, 0.0), "Środek osi korby / suportu"),
+        "s75": ("S75 — punkt siodła 75 mm", saddle, "Środek siodła w przekroju o szerokości 75 mm"),
+        "saddle_axis": ("Oś siodła", saddle_axis, "Punkt na osi sztycy przy wysokości siodła"),
+        "nose": ("Czubek siodła", saddle_nose, "Najbardziej wysunięty punkt nosa siodła"),
+        "rear_saddle": ("Tył siodła", saddle_rear, "Najbardziej cofnięty punkt siodła"),
+        "seat_top": ("Góra rury podsiodłowej", bp["seat_top"], "Środek górnej krawędzi rury podsiodłowej"),
+        "head_top": ("Góra główki ramy", bp["head_top"], "Środek górnego łożyska sterów"),
+        "head_bottom": ("Dół główki ramy", bp["head_bottom"], "Środek dolnego łożyska sterów"),
+        "stem_end": ("Koniec mostka", bp["stem_end"], "Oś obejmy kierownicy"),
+        "hood": ("Chwyt / klamkomanetka", hood, "Miejsce podparcia dłoni"),
+        "rear_axle": ("Oś tylnego koła", bp["rear_axle"], "Środek osi tylnej piasty"),
+        "front_axle": ("Oś przedniego koła", bp["front_axle"], "Środek osi przedniej piasty"),
+        "rear_ground": ("Styk tylnego koła z podłożem", rear_contact, "Punkt styku opony z podłożem"),
+        "front_ground": ("Styk przedniego koła z podłożem", front_contact, "Punkt styku opony z podłożem"),
+        "pedal": ("Oś pedału", pedal, "Środek osi pedału przy korbie ustawionej poziomo"),
+        "top_mid": ("Środek górnej rury", top_mid, "Połowa odcinka pomiędzy rurą podsiodłową i główką"),
+    }
+    xs = [v[1][0] for v in raw_points.values()] + [bp["rear_axle"][0]-bike.wheel_radius, bp["front_axle"][0]+bike.wheel_radius]
+    ys = [v[1][1] for v in raw_points.values()] + [ground_y-50, bike.bb_drop+bike.wheel_radius]
+    min_x, max_x = min(xs)-130, max(xs)+130
+    min_y, max_y = min(ys)-80, max(ys)+120
+    W, H = 1100, 590
+    scale = min((W-100)/(max_x-min_x), (H-90)/(max_y-min_y))
+    ox=(W-(max_x-min_x)*scale)/2
+    oy=(H-(max_y-min_y)*scale)/2
+    def T(pt):
+        return (ox+(pt[0]-min_x)*scale, H-oy-(pt[1]-min_y)*scale)
+    point_payload=[]
+    for key,(name,pt,desc) in raw_points.items():
+        x,y=T(pt)
+        point_payload.append({"id":key,"name":name,"x":round(x,2),"y":round(y,2),"mx":round(pt[0],2),"my":round(pt[1],2),"desc":desc})
+    def svg_line(a,b,color,width=5):
+        x1,y1=T(a);x2,y2=T(b)
+        return f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{color}" stroke-width="{width}" stroke-linecap="round"/>'
+    colors=palette(bike.bike_type)
+    frame=[]
+    for a,b in ((bp["rear_axle"],(0,0)),(bp["rear_axle"],bp["seat_top"]),((0,0),bp["seat_top"]),(bp["seat_top"],bp["head_top"]),((0,0),bp["head_bottom"]),(bp["head_bottom"],bp["head_top"]),(bp["head_bottom"],bp["front_axle"])):
+        frame.append(svg_line(a,b,colors["dark"],10));frame.append(svg_line(a,b,colors["frame"],6))
+    frame.append(svg_line(bp["seat_top"],saddle,"#d8e4ee",5))
+    frame.append(svg_line(bp["head_top"],bp["stem_end"],"#e2ebf3",5))
+    frame.append(svg_line(bp["stem_end"],hood,"#e2ebf3",5))
+    sx,sy=T(saddle)
+    frame.append(f'<line x1="{sx-38:.1f}" y1="{sy:.1f}" x2="{sx+42:.1f}" y2="{sy-2:.1f}" stroke="#edf3f8" stroke-width="11" stroke-linecap="round"/>')
+    wheels=[]
+    for c in (bp["rear_axle"],bp["front_axle"]):
+        cx,cy=T(c);r=bike.wheel_radius*scale
+        wheels.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" fill="none" stroke="#303941" stroke-width="10"/>')
+        wheels.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r-8:.1f}" fill="none" stroke="#cfdae4" stroke-width="3"/>')
+        wheels.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="5" fill="#e4ebf2"/>')
+    gx1,gy=T((min_x,ground_y));gx2,_=T((max_x,ground_y))
+    payload=json.dumps(point_payload,ensure_ascii=False)
+    presets=[
+        ("Wysokość siodła", "bb", "saddle_axis", "direct", "Przyłóż początek metrówki do środka suportu i prowadź ją wzdłuż osi rury podsiodłowej oraz sztycy."),
+        ("Setback S75", "bb", "s75", "horizontal", "Ustaw rower pionowo. Opuść pion z punktu S75 i zmierz poziomą odległość do pionu przechodzącego przez środek suportu."),
+        ("S75 → chwyt", "s75", "hood", "direct", "Zmierz prostą odległość od punktu S75 do miejsca podparcia dłoni na klamkomanetce."),
+        ("Drop siodło–chwyt", "s75", "hood", "vertical", "Zmierz różnicę wysokości punktu S75 i chwytu. Najłatwiej użyć poziomicy oraz metrówki."),
+        ("Reach siodło–chwyt", "s75", "hood", "horizontal", "Zmierz poziomo od pionu przechodzącego przez S75 do pionu przechodzącego przez chwyt."),
+        ("Długość mostka", "head_top", "stem_end", "direct", "Zmierz od środka górnej śruby sterów do osi obejmy kierownicy."),
+        ("Rozstaw osi", "rear_axle", "front_axle", "horizontal", "Zmierz między środkami osi obu kół, równolegle do podłoża."),
+        ("Długość korby", "bb", "pedal", "direct", "Zmierz od środka suportu do środka osi pedału."),
+        ("BB drop", "bb", "rear_axle", "vertical", "Zmierz pionową różnicę pomiędzy osią piasty a osią suportu."),
+        ("Front-center", "bb", "front_axle", "direct", "Zmierz od środka suportu do środka osi przedniego koła."),
+    ]
+    preset_json=json.dumps([{"name":a,"a":b,"b":c,"mode":d,"help":e} for a,b,c,d,e in presets],ensure_ascii=False)
+    doc=f'''<!doctype html><html lang="pl"><head><meta charset="utf-8"><style>
+    *{{box-sizing:border-box}} body{{margin:0;background:#07131e;color:#eef7ff;font-family:Segoe UI,Arial,sans-serif}}
+    .wrap{{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:14px;height:780px}}
+    .canvas{{position:relative;background:radial-gradient(circle at 50% 45%,#17354d,#07131e 65%);border:1px solid #35536b;border-radius:18px;overflow:hidden}}
+    svg{{width:100%;height:100%;display:block}} .p{{cursor:pointer;transition:.15s}} .p:hover circle{{r:10;fill:#fff}} .p.sel circle{{fill:#ffcf67;stroke:#fff;stroke-width:3}}
+    .panel{{background:#0e1e2c;border:1px solid #35536b;border-radius:18px;padding:14px;overflow:auto}}
+    h3{{margin:0 0 8px}} .muted{{color:#9fb5c7;font-size:13px}} select,button{{width:100%;background:#173047;color:#fff;border:1px solid #4c708d;border-radius:9px;padding:9px;margin:4px 0;font-weight:650}}
+    button:hover{{background:#24506d}} .preset{{text-align:left;font-size:13px}} .result{{background:#13283a;border:1px solid #4a6f8b;border-radius:13px;padding:12px;margin:10px 0}}
+    .big{{font-size:25px;font-weight:850;color:#67e4b5}} .row{{display:grid;grid-template-columns:1fr 1fr;gap:7px}} .tip{{background:#1b2f40;border-left:4px solid #ffd166;padding:10px;border-radius:8px;font-size:13px;line-height:1.4}}
+    .legend{{position:absolute;left:14px;top:12px;background:#0d1e2ddd;border:1px solid #3e607a;padding:8px 10px;border-radius:10px;font-size:12px}}
+    @media(max-width:850px){{.wrap{{grid-template-columns:1fr;height:auto}}.canvas{{height:540px}}.panel{{max-height:none}}}}
+    </style></head><body><div class="wrap"><div class="canvas"><div class="legend">Kliknij dwa charakterystyczne punkty. Punkty przyciągają pomiar automatycznie.</div>
+    <svg id="s" viewBox="0 0 {W} {H}"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="4.5" refY="4.5" orient="auto"><path d="M9 0 L0 4.5 L9 9" fill="none" stroke="#ffd166" stroke-width="1.5"/></marker></defs>
+    <rect width="{W}" height="{H}" fill="transparent"/><line x1="{gx1:.1f}" y1="{gy:.1f}" x2="{gx2:.1f}" y2="{gy:.1f}" stroke="#607386" stroke-width="3"/>{''.join(wheels)}{''.join(frame)}<g id="measure"></g><g id="points"></g></svg></div>
+    <div class="panel"><h3>📏 Interaktywne pomiary</h3><div class="muted">Wybierz gotowy pomiar albo kliknij dwa punkty na rowerze.</div>
+    <label>Rodzaj wyniku</label><select id="mode"><option value="direct">Odległość prosta</option><option value="horizontal">Odległość pozioma</option><option value="vertical">Różnica wysokości</option><option value="all">Wszystkie składowe</option></select>
+    <div class="row"><button id="clear">Wyczyść</button><button id="swap">Zamień punkty</button></div>
+    <div class="result"><div id="names">Wybierz pierwszy punkt</div><div class="big" id="main">—</div><div id="details" class="muted"></div></div><div class="tip" id="tip">Kliknij punkt początkowy, a następnie końcowy.</div>
+    <h3 style="margin-top:14px">Gotowe pomiary</h3><div id="presets"></div></div></div>
+    <script>
+    const points={payload}; const presets={preset_json}; let selected=[]; let help='';
+    const pg=document.getElementById('points'), mg=document.getElementById('measure'), mode=document.getElementById('mode');
+    const byId=id=>points.find(p=>p.id===id);
+    points.forEach(p=>{{const g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class','p');g.dataset.id=p.id;g.innerHTML=`<circle cx="${{p.x}}" cy="${{p.y}}" r="7" fill="#67e4b5" stroke="#07131e" stroke-width="2"/><text x="${{p.x+10}}" y="${{p.y-10}}" fill="#f5fbff" font-size="11" font-weight="700">${{p.name.split(' — ')[0]}}</text>`;g.onclick=()=>pick(p.id);pg.appendChild(g)}});
+    function pick(id){{if(selected.length>=2)selected=[];selected.push(id);help='';draw();}}
+    function setSel(a,b,m,h){{selected=[a,b];mode.value=m;help=h;draw()}}
+    function draw(){{document.querySelectorAll('.p').forEach(g=>g.classList.toggle('sel',selected.includes(g.dataset.id)));mg.innerHTML='';
+      if(selected.length<2){{document.getElementById('names').textContent=selected.length?byId(selected[0]).name+' → wybierz drugi punkt':'Wybierz pierwszy punkt';document.getElementById('main').textContent='—';document.getElementById('details').textContent='';document.getElementById('tip').textContent=selected.length?byId(selected[0]).desc:'Kliknij punkt początkowy, a następnie końcowy.';return}}
+      const a=byId(selected[0]),b=byId(selected[1]);const dx=b.mx-a.mx,dy=b.my-a.my,d=Math.hypot(dx,dy),ang=Math.atan2(dy,dx)*180/Math.PI;let value=d,label='Odległość prosta';if(mode.value==='horizontal'){{value=Math.abs(dx);label='Odległość pozioma'}}if(mode.value==='vertical'){{value=Math.abs(dy);label='Różnica wysokości'}}
+      document.getElementById('names').textContent=a.name+' → '+b.name;document.getElementById('main').textContent=Math.round(value)+' mm';document.getElementById('details').textContent=`prosta: ${{Math.round(d)}} mm · pozioma: ${{Math.round(Math.abs(dx))}} mm · pionowa: ${{Math.round(Math.abs(dy))}} mm · kąt: ${{ang.toFixed(1)}}°`;
+      document.getElementById('tip').textContent=help||`Punkt 1: ${{a.desc}}. Punkt 2: ${{b.desc}}. Wynik: ${{label.toLowerCase()}}.`;
+      let x1=a.x,y1=a.y,x2=b.x,y2=b.y;if(mode.value==='horizontal')y2=y1;if(mode.value==='vertical')x2=x1;
+      mg.innerHTML=`<line x1="${{x1}}" y1="${{y1}}" x2="${{x2}}" y2="${{y2}}" stroke="#ffd166" stroke-width="4" marker-start="url(#arrow)" marker-end="url(#arrow)"/><rect x="${{(x1+x2)/2-55}}" y="${{(y1+y2)/2-25}}" width="110" height="31" rx="9" fill="#0d1e2d" stroke="#ffd166"/><text x="${{(x1+x2)/2}}" y="${{(y1+y2)/2-5}}" fill="#fff" text-anchor="middle" font-size="14" font-weight="800">${{Math.round(value)}} mm</text>`;
+    }}
+    mode.onchange=draw;document.getElementById('clear').onclick=()=>{{selected=[];help='';draw()}};document.getElementById('swap').onclick=()=>{{selected.reverse();draw()}};
+    const pr=document.getElementById('presets');presets.forEach(p=>{{const b=document.createElement('button');b.className='preset';b.textContent=p.name;b.onclick=()=>setSel(p.a,p.b,p.mode,p.help);pr.appendChild(b)}});draw();
+    </script></body></html>'''
+    components.html(doc, height=800, scrolling=False)
+
+
 def measurement_values(bike: BikeGeometry, settings: FitSettings) -> list[tuple[str, str, str, str]]:
     bp = bike_points(bike, settings)
     setback = max(0.0, -bp["saddle"][0])
@@ -1367,7 +1487,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     ) or "<li>Ocena powyżej 90/100 — brak ostrzeżeń modelu.</li>"
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v3.8</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v4.0</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1707,7 +1827,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v3.8</h1>
+  <h1>BikeFit Studio Online v4.0</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -1726,8 +1846,8 @@ st.markdown(render_fit_diagnostics(fit_diagnostics, analysis.score), unsafe_allo
 st.markdown(render_frame_size_assessment(frame_size_assessment, compact=True), unsafe_allow_html=True)
 st.caption("Ocena rozmiaru ramy aktualizuje się automatycznie po każdej zmianie wzrostu, przekroku, stylu, geometrii lub ustawień kokpitu — nie trzeba ponownie uruchamiać optymalizacji.")
 
-main_tab, config_tab, tire_tab, geometry_tab, import_tab, angles_tab, report_tab = st.tabs([
-    "Symulacja", "Wymiary i konfigurator", "Opony i ciśnienie", "Geometria roweru", "Import online", "Wykresy kątów", "Raport",
+main_tab, config_tab, tire_tab, geometry_tab, import_tab, measurements_tab, angles_tab, report_tab = st.tabs([
+    "Symulacja", "Wymiary i konfigurator", "Opony i ciśnienie", "Geometria roweru", "Import online", "📏 Pomiary roweru", "Wykresy kątów", "Raport",
 ])
 
 with main_tab:
@@ -1992,6 +2112,12 @@ with import_tab:
     st.caption("Niektóre strony blokują automatyczny odczyt. W takim przypadku przepisz wartości w zakładce geometrii.")
 
 
+with measurements_tab:
+    st.subheader("Interaktywne pomiary rzeczywistego roweru")
+    st.write("Kliknij dwa charakterystyczne punkty albo wybierz gotowy pomiar. Aplikacja pokaże odległość prostą, poziomą, pionową i kąt oraz podpowie, jak wykonać pomiar zwykłą metrówką.")
+    render_interactive_measurements(bike, settings)
+    st.info("Rysunek jest modelem geometrycznym. Wartości służą do przeniesienia ustawienia na realny rower. Przy pomiarze ustaw rower pionowo na równym podłożu i zawsze używaj tych samych punktów referencyjnych.")
+
 with angles_tab:
     st.subheader("Wykresy kątów przez pełny obrót korby")
     angle_records = cycle_angle_records(bike, rider, settings)
@@ -2047,5 +2173,5 @@ with report_tab:
 
 render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online v3.8 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
+<div class="footer-note">BikeFit Studio Online v4.0 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
 """, unsafe_allow_html=True)
