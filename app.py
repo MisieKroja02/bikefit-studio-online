@@ -55,7 +55,7 @@ COUNTER_NAMESPACE = "misiek-bikefit-studio-online"
 COUNTER_API_BASE = "https://api.counterapi.dev/v1"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v4.4 — MisieK",
+    page_title="BikeFit Studio Online v4.5 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -169,6 +169,21 @@ li[role="option"]:hover, li[role="option"][aria-selected="true"] {background:#31
 
 [data-testid="stMetricValue"] {color:#f6fbff;}
 [data-testid="stMetricLabel"] {color:#a9bed0;}
+
+/* Szerszy, czytelniejszy panel boczny. */
+[data-testid="stSidebar"] {
+  min-width:330px !important;
+  width:330px !important;
+}
+[data-testid="stSidebar"] > div:first-child {
+  width:330px !important;
+}
+[data-testid="stSidebar"] .stButton > button {
+  min-height:42px !important;
+  white-space:normal !important;
+  line-height:1.2 !important;
+  padding:0.55rem 0.65rem !important;
+}
 
 /* Natywne widżety w panelu bocznym — bez białego tekstu na białym tle. */
 [data-testid="stSidebar"] [data-baseweb="input"],
@@ -1562,7 +1577,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     ) or "<li>Ocena powyżej 90/100 — brak ostrzeżeń modelu.</li>"
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v4.4</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v4.5</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1828,41 +1843,52 @@ with st.sidebar:
             help="Szybka symulacja przesunięcia chwytu bez zmiany zapisanej geometrii ramy."
         )
 
-        st.markdown("**Szybkie ustawienia**")
-        p1, p2, p3 = st.columns(3)
-        p1.button(
-            "Komfort", key="preset_components_comfort", use_container_width=True,
-            on_click=apply_component_preset,
-            kwargs={"stem_length": 70.0, "stem_angle": 10.0, "bar_height_delta": 25.0},
-            help="Krótszy i wyżej ustawiony kokpit."
+        st.markdown("**Szybkie ustawienia kokpitu**")
+        cockpit_preset = st.selectbox(
+            "Wybierz charakter kokpitu",
+            ["Komfort — krócej i wyżej", "Neutralnie", "Sportowo — dłużej i niżej"],
+            key="component_cockpit_preset",
+            label_visibility="collapsed",
         )
-        p2.button(
-            "Neutralnie", key="preset_components_neutral", use_container_width=True,
+        preset_map = {
+            "Komfort — krócej i wyżej": {"stem_length": 70.0, "stem_angle": 10.0, "bar_height_delta": 25.0},
+            "Neutralnie": {"stem_length": 90.0, "stem_angle": 0.0, "bar_height_delta": 0.0},
+            "Sportowo — dłużej i niżej": {"stem_length": 110.0, "stem_angle": -7.0, "bar_height_delta": -15.0},
+        }
+        st.button(
+            "Zastosuj ustawienie kokpitu",
+            key="apply_component_cockpit_preset",
+            use_container_width=True,
             on_click=apply_component_preset,
-            kwargs={"stem_length": 90.0, "stem_angle": 0.0, "bar_height_delta": 0.0},
-        )
-        p3.button(
-            "Sportowo", key="preset_components_sport", use_container_width=True,
-            on_click=apply_component_preset,
-            kwargs={"stem_length": 110.0, "stem_angle": -7.0, "bar_height_delta": -15.0},
-            help="Dłuższy i niżej ustawiony kokpit."
+            kwargs=preset_map[cockpit_preset],
         )
 
-        c165, c170, c172, c175 = st.columns(4)
-        for col, value in ((c165, 165.0), (c170, 170.0), (c172, 172.5), (c175, 175.0)):
-            col.button(
-                f"Korba {value:g}", key=f"crank_preset_{value:g}", use_container_width=True,
-                on_click=apply_component_preset, kwargs={"crank_length": value}
-            )
+        st.markdown("**Szybki wybór korby**")
+        crank_preset = st.selectbox(
+            "Długość korby",
+            [165.0, 170.0, 172.5, 175.0],
+            key="component_crank_preset_select",
+            format_func=lambda value: f"{value:g} mm",
+            label_visibility="collapsed",
+        )
+        st.button(
+            f"Ustaw korbę {crank_preset:g} mm",
+            key="apply_component_crank_preset",
+            use_container_width=True,
+            on_click=apply_component_preset,
+            kwargs={"crank_length": crank_preset},
+        )
 
         st.button(
-            "Przywróć komponenty z geometrii", key="reset_replaceable_components",
+            "↺ Przywróć komponenty z geometrii", key="reset_replaceable_components",
             use_container_width=True, on_click=reset_replaceable_components, args=(base_bike,)
         )
-        st.info(
-            "Zmiana długości korby może wymagać ponownego ustawienia wysokości siodła. "
-            "Po zmianie mostka lub podkładek obserwuj ocenę zasięgu, pochylenie tułowia, łokcie i rozkład nacisku na dłonie."
-        )
+        with st.expander("ℹ️ Jak interpretować zmiany", expanded=False):
+            st.caption(
+                "Zmiana długości korby może wymagać ponownego ustawienia wysokości siodła. "
+                "Po zmianie mostka lub podkładek obserwuj ocenę zasięgu, pochylenie tułowia, "
+                "kąt łokcia i rozkład nacisku na dłonie."
+            )
 
     bike = geometry_from_state(base_bike)
 
@@ -1965,7 +1991,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v4.4</h1>
+  <h1>BikeFit Studio Online v4.5</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -2318,5 +2344,5 @@ with report_tab:
 
 render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online v4.4 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
+<div class="footer-note">BikeFit Studio Online v4.5 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
 """, unsafe_allow_html=True)

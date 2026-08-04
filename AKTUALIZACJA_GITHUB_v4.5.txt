@@ -1,0 +1,14 @@
+BikeFit Studio Online v4.5 — aktualizacja wyglądu panelu komponentów
+
+1. Podmień plik app.py w repozytorium GitHub.
+2. Kliknij Commit changes.
+3. Poczekaj na automatyczne wdrożenie Streamlit.
+4. W razie potrzeby użyj Manage app -> Reboot app i Ctrl+F5.
+
+Zmiany:
+- panel boczny poszerzony do 330 px,
+- presety kokpitu przeniesione do czytelnej listy wyboru,
+- presety korby przeniesione do listy wyboru,
+- usunięte wąskie pionowe przyciski z łamanym tekstem,
+- opis zmian przeniesiony do zwijanego panelu,
+- poprawione odstępy i wysokość przycisków.
