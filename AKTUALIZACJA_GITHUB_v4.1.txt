@@ -1,0 +1,15 @@
+Aktualizacja BikeFit Studio Online v4.1
+
+Nowości:
+- nowa zakładka „🧭 Jak mierzyć”,
+- techniczne ilustracje SVG dla baranka i kierownicy prostej,
+- dokładne punkty H, S75 i BB,
+- instrukcje wysokości siodła i długości mostka,
+- poprawne oraz błędne miejsca pomiaru,
+- automatyczne dopasowanie ilustracji chwytu do typu roweru.
+
+Na GitHubie podmień:
+1. app.py
+2. dodaj nowy plik bikefit/visual_guides.py
+
+Następnie wykonaj Commit changes. Streamlit zaktualizuje aplikację automatycznie. W razie potrzeby użyj Manage app -> Reboot app i Ctrl+F5.
