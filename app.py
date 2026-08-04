@@ -55,7 +55,7 @@ COUNTER_NAMESPACE = "misiek-bikefit-studio-online"
 COUNTER_API_BASE = "https://api.counterapi.dev/v1"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v4.1 — MisieK",
+    page_title="BikeFit Studio Online v4.2 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -860,6 +860,31 @@ def reset_geometry_state(bike: BikeGeometry) -> None:
         st.session_state[f"geo_{field}"] = float(getattr(bike, field))
 
 
+def apply_component_preset(stem_length: float | None = None, stem_angle: float | None = None,
+                           crank_length: float | None = None, hood_reach: float | None = None,
+                           bar_height_delta: float | None = None) -> None:
+    """Bezpiecznie ustawia łatwo wymieniane komponenty przez callback Streamlit."""
+    if stem_length is not None:
+        st.session_state.geo_stem_length = float(stem_length)
+    if stem_angle is not None:
+        st.session_state.geo_stem_angle = float(stem_angle)
+    if crank_length is not None:
+        st.session_state.geo_crank_length = float(crank_length)
+    if hood_reach is not None:
+        st.session_state.geo_hood_reach = float(hood_reach)
+    if bar_height_delta is not None:
+        st.session_state.handlebar_stack_delta = float(bar_height_delta)
+
+
+def reset_replaceable_components(base_bike: BikeGeometry) -> None:
+    st.session_state.geo_stem_length = float(base_bike.stem_length)
+    st.session_state.geo_stem_angle = float(base_bike.stem_angle)
+    st.session_state.geo_crank_length = float(base_bike.crank_length)
+    st.session_state.geo_hood_reach = float(base_bike.hood_reach)
+    st.session_state.handlebar_stack_delta = 0.0
+    st.session_state.handlebar_reach_delta = 0.0
+
+
 def geometry_from_state(fallback: BikeGeometry) -> BikeGeometry:
     payload = fallback.to_dict()
     payload["name"] = str(st.session_state.get("geo_name", fallback.name))
@@ -1488,7 +1513,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     ) or "<li>Ocena powyżej 90/100 — brak ostrzeżeń modelu.</li>"
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v4.1</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v4.2</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1705,6 +1730,84 @@ with st.sidebar:
             st.session_state.sidebar_import_status = save_message
             st.rerun()
 
+    with st.expander("🔧 Komponenty łatwe do wymiany", expanded=False):
+        st.caption(
+            "Te ustawienia dotyczą części, które najczęściej zmienia się bez wymiany ramy. "
+            "Wpływają od razu na symulację, kąty i ocenę pozycji, ale nie zmieniają wymiarów samej ramy."
+        )
+
+        comp_c1, comp_c2 = st.columns(2)
+        comp_c1.number_input(
+            "Długość korby [mm]", min_value=150.0, max_value=190.0,
+            key="geo_crank_length", step=2.5, format="%.1f",
+            help="Najczęściej spotykane wartości: 165, 170, 172.5 i 175 mm."
+        )
+        comp_c2.number_input(
+            "Długość mostka [mm]", min_value=40.0, max_value=150.0,
+            key="geo_stem_length", step=5.0, format="%.0f",
+            help="Krótszy mostek skraca zasięg, dłuższy wydłuża kokpit."
+        )
+
+        comp_c3, comp_c4 = st.columns(2)
+        comp_c3.number_input(
+            "Kąt mostka [°]", min_value=-25.0, max_value=35.0,
+            key="geo_stem_angle", step=1.0, format="%.1f",
+            help="Dodatni kąt podnosi kierownicę; ujemny zwykle ją obniża i wydłuża pozycję."
+        )
+        comp_c4.slider(
+            "Podkładki / podniesienie kierownicy [mm]", -40.0, 80.0,
+            key="handlebar_stack_delta", step=5.0,
+            help="Symuluje zmianę liczby podkładek, odwrócenie mostka lub zmianę jego wysokości."
+        )
+
+        comp_c5, comp_c6 = st.columns(2)
+        comp_c5.number_input(
+            "Zasięg kierownicy / chwytu [mm]", min_value=35.0, max_value=130.0,
+            key="geo_hood_reach", step=2.5, format="%.1f",
+            help="Dla baranka odpowiada głównie zasięgowi kierownicy i położeniu klamkomanetek; dla prostej kierownicy — położeniu środka chwytu."
+        )
+        comp_c6.slider(
+            "Dodatkowa korekta zasięgu [mm]", -60.0, 60.0,
+            key="handlebar_reach_delta", step=5.0,
+            help="Szybka symulacja przesunięcia chwytu bez zmiany zapisanej geometrii ramy."
+        )
+
+        st.markdown("**Szybkie ustawienia**")
+        p1, p2, p3 = st.columns(3)
+        p1.button(
+            "Komfort", key="preset_components_comfort", use_container_width=True,
+            on_click=apply_component_preset,
+            kwargs={"stem_length": 70.0, "stem_angle": 10.0, "bar_height_delta": 25.0},
+            help="Krótszy i wyżej ustawiony kokpit."
+        )
+        p2.button(
+            "Neutralnie", key="preset_components_neutral", use_container_width=True,
+            on_click=apply_component_preset,
+            kwargs={"stem_length": 90.0, "stem_angle": 0.0, "bar_height_delta": 0.0},
+        )
+        p3.button(
+            "Sportowo", key="preset_components_sport", use_container_width=True,
+            on_click=apply_component_preset,
+            kwargs={"stem_length": 110.0, "stem_angle": -7.0, "bar_height_delta": -15.0},
+            help="Dłuższy i niżej ustawiony kokpit."
+        )
+
+        c165, c170, c172, c175 = st.columns(4)
+        for col, value in ((c165, 165.0), (c170, 170.0), (c172, 172.5), (c175, 175.0)):
+            col.button(
+                f"Korba {value:g}", key=f"crank_preset_{value:g}", use_container_width=True,
+                on_click=apply_component_preset, kwargs={"crank_length": value}
+            )
+
+        st.button(
+            "Przywróć komponenty z geometrii", key="reset_replaceable_components",
+            use_container_width=True, on_click=reset_replaceable_components, args=(base_bike,)
+        )
+        st.info(
+            "Zmiana długości korby może wymagać ponownego ustawienia wysokości siodła. "
+            "Po zmianie mostka lub podkładek obserwuj ocenę zasięgu, pochylenie tułowia, łokcie i rozkład nacisku na dłonie."
+        )
+
     bike = geometry_from_state(base_bike)
 
     st.markdown("#### Rowerzysta")
@@ -1814,8 +1917,7 @@ with st.sidebar:
     st.slider("Przesunięcie siodła na szynach [mm] (+ przód / − tył)", -60.0, 80.0, key="saddle_fore_aft", step=1.0)
     _shift_value, _shift_direction, _ = saddle_shift_description(float(st.session_state.saddle_fore_aft))
     st.info(f"Ustaw siodło: **{_shift_value} {_shift_direction}** względem pozycji neutralnej na szynach.")
-    st.slider("Zmiana wysokości kierownicy [mm]", -60.0, 100.0, key="handlebar_stack_delta", step=1.0)
-    st.slider("Zmiana zasięgu kierownicy [mm]", -80.0, 80.0, key="handlebar_reach_delta", step=1.0)
+    st.caption("Długość korby, mostek, jego kąt oraz wysokość i zasięg kierownicy ustawisz wyżej w panelu **🔧 Komponenty łatwe do wymiany**.")
     st.slider("Kąt stopy [°]", -20.0, 15.0, key="foot_angle", step=1.0)
     st.caption("Sterowanie animacją, kadencją, skalą i oznaczeniami znajduje się pod rysunkiem roweru w zakładce **Symulacja**.")
 
@@ -1828,7 +1930,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v4.1</h1>
+  <h1>BikeFit Studio Online v4.2</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -2181,5 +2283,5 @@ with report_tab:
 
 render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online v4.1 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
+<div class="footer-note">BikeFit Studio Online v4.2 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
 """, unsafe_allow_html=True)

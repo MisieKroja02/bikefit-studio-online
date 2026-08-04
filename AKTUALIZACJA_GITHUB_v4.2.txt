@@ -1,0 +1,20 @@
+AKTUALIZACJA BIKEFIT STUDIO ONLINE v4.2
+
+Najprostsza aktualizacja:
+1. W repozytorium GitHub otwórz plik app.py.
+2. Kliknij ikonę ołówka / Edit this file.
+3. Podmień całą zawartość na app.py z wersji v4.2.
+4. Kliknij Commit changes.
+5. Poczekaj na automatyczne wdrożenie Streamlit.
+6. W razie potrzeby: Manage app -> Reboot app oraz Ctrl+F5.
+
+Nowości v4.2:
+- domyślnie zwinięty panel „Komponenty łatwe do wymiany”,
+- regulacja długości korby,
+- regulacja długości i kąta mostka,
+- symulacja podkładek / wysokości kierownicy,
+- regulacja zasięgu chwytu i dodatkowej korekty reach,
+- presety Komfort / Neutralnie / Sportowo,
+- szybki wybór korby 165 / 170 / 172.5 / 175 mm,
+- przywracanie komponentów zapisanych w geometrii roweru,
+- zmiany przeliczają symulację i ocenę bez zapisywania nowej ramy.
