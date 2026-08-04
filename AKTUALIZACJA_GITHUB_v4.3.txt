@@ -1,10 +1,20 @@
-BikeFit Studio Online v4.3 — naprawa DuplicateElementKey
+AKTUALIZACJA BIKEFIT STUDIO ONLINE v4.3
 
-Podmień na GitHubie plik app.py na wersję v4.3 i wykonaj Commit changes.
-Następnie w Streamlit użyj Manage app -> Reboot app oraz odśwież stronę Ctrl+F5.
+Naprawiono błąd StreamlitDuplicateElementKey w panelu "Komponenty łatwe do wymiany".
+
+Przyczyna:
+- ręczna edycja geometrii i panel komponentów korzystały z tych samych kluczy widżetów.
 
 Naprawa:
-- ręczna edycja geometrii używa kluczy geo_*,
-- panel komponentów używa oddzielnych kluczy component_*,
-- komponenty nadal natychmiast wpływają na symulację,
-- zmiana roweru przywraca komponenty zapisane dla wybranej geometrii.
+- geometria ramy używa kluczy geo_*,
+- wymienne komponenty używają osobnych kluczy component_*,
+- komponenty nadal wpływają na symulację i obliczenia,
+- zmiana komponentu nie nadpisuje automatycznie zapisanej geometrii ramy.
+
+AKTUALIZACJA:
+1. Na GitHubie podmień plik app.py.
+2. Wykonaj Commit changes.
+3. Poczekaj na automatyczne wdrożenie Streamlit.
+4. W razie potrzeby użyj Manage app -> Reboot app i Ctrl+F5.
+
+Pełna paczka ZIP zawiera wszystkie pliki projektu.

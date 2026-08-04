@@ -36,3 +36,13 @@ Autor: MisieK
 ## Usuwanie błędnych geometrii — v3.8
 
 Własne geometrie można usunąć bezpośrednio pod listą wyboru. Wbudowane geometrie przykładowe są chronione. Po rozwinięciu sekcji „Usuń wybraną geometrię” należy zaznaczyć potwierdzenie i kliknąć przycisk usuwania. Operacja usuwa rekord zarówno z trwałego folderu online, jak i z lokalnej kopii.
+
+## v4.3
+- Naprawiono konflikt kluczy Streamlit w panelu komponentów.
+- Rozdzielono parametry geometrii ramy i wymiennych komponentów.
+
+## v4.4
+
+- wyraźna regulacja wysokości podkładek pod mostkiem,
+- rozwinięty panel wymiennych komponentów,
+- bezpieczne callbacki do doboru i optymalizacji ustawienia.

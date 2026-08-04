@@ -1,0 +1,12 @@
+BikeFit Studio Online v4.4 — aktualizacja
+
+1. Podmień plik app.py w repozytorium GitHub.
+2. Kliknij Commit changes.
+3. Poczekaj na automatyczne wdrożenie Streamlit.
+4. W razie potrzeby wybierz Manage app -> Reboot app i wykonaj Ctrl+F5.
+
+Zmiany:
+- panel „Komponenty łatwe do wymiany” jest domyślnie rozwinięty,
+- dodano jednoznaczny suwak „Wysokość podkładek pod mostkiem [mm]”,
+- naprawiono błąd modyfikacji handlebar_stack_delta po utworzeniu widżetu,
+- „Dobierz ustawienie bazowe” i „Optymalizuj aktualne ustawienie” działają przez bezpieczne callbacki.

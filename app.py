@@ -55,7 +55,7 @@ COUNTER_NAMESPACE = "misiek-bikefit-studio-online"
 COUNTER_API_BASE = "https://api.counterapi.dev/v1"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v4.3 — MisieK",
+    page_title="BikeFit Studio Online v4.4 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -938,6 +938,38 @@ def apply_fit_result(settings: FitSettings, notes: list[str], status: str) -> No
     st.session_state.fit_action_status = status
     st.session_state.fit_action_error = False
 
+def run_base_fit_action(rider: Rider, bike: BikeGeometry) -> None:
+    """Callback wykonywany przed renderowaniem widżetów w kolejnym przebiegu."""
+    try:
+        rec = recommend_and_evaluate(
+            rider,
+            bike,
+            str(st.session_state.style),
+            str(st.session_state.flexibility),
+        )
+        apply_fit_result(
+            rec.settings,
+            rec.notes,
+            "Dobrano ustawienie bazowe. Sprawdź wartości M1–M4 i wprowadzaj zmiany stopniowo.",
+        )
+    except Exception as exc:
+        st.session_state.fit_action_status = f"Nie udało się dobrać ustawienia: {exc}"
+        st.session_state.fit_action_error = True
+
+
+def run_optimize_fit_action(rider: Rider, bike: BikeGeometry) -> None:
+    """Optymalizuje ustawienie w callbacku, zanim Streamlit utworzy suwaki."""
+    try:
+        result, optimized_analysis = optimize_fit(bike, rider, current_settings())
+        apply_fit_result(
+            result,
+            [f"Optymalizacja zakończona wynikiem {optimized_analysis.score:.1f}/100."],
+            f"Optymalizacja zakończona: {optimized_analysis.score:.1f}/100.",
+        )
+    except Exception as exc:
+        st.session_state.fit_action_status = f"Nie udało się zoptymalizować ustawienia: {exc}"
+        st.session_state.fit_action_error = True
+
 
 def apply_pending_profile_payload() -> None:
     payload = st.session_state.get("pending_profile_payload")
@@ -1530,7 +1562,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     ) or "<li>Ocena powyżej 90/100 — brak ostrzeżeń modelu.</li>"
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v4.3</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v4.4</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1747,7 +1779,7 @@ with st.sidebar:
             st.session_state.sidebar_import_status = save_message
             st.rerun()
 
-    with st.expander("🔧 Komponenty łatwe do wymiany", expanded=False):
+    with st.expander("🔧 Komponenty łatwe do wymiany", expanded=True):
         st.caption(
             "Te ustawienia dotyczą części, które najczęściej zmienia się bez wymiany ramy. "
             "Wpływają od razu na symulację, kąty i ocenę pozycji, ale nie zmieniają wymiarów samej ramy."
@@ -1772,9 +1804,16 @@ with st.sidebar:
             help="Dodatni kąt podnosi kierownicę; ujemny zwykle ją obniża i wydłuża pozycję."
         )
         comp_c4.slider(
-            "Podkładki / podniesienie kierownicy [mm]", -40.0, 80.0,
+            "Wysokość podkładek pod mostkiem [mm]", -40.0, 80.0,
             key="handlebar_stack_delta", step=5.0,
-            help="Symuluje zmianę liczby podkładek, odwrócenie mostka lub zmianę jego wysokości."
+            help=(
+                "0 mm oznacza pozycję zapisaną w geometrii. Wartość dodatnia podnosi chwyt, "
+                "ujemna symuluje usunięcie podkładek, odwrócenie mostka lub niższy kokpit."
+            )
+        )
+        st.caption(
+            "To jest regulacja wysokości mostka na rurze sterowej. Typowe realne zmiany podkładkami "
+            "to około 5–30 mm; większe wartości traktuj jako symulację także kąta i konstrukcji mostka."
         )
 
         comp_c5, comp_c6 = st.columns(2)
@@ -1882,46 +1921,25 @@ with st.sidebar:
             del st.session_state[session_key]
         st.rerun()
 
-    if st.button(
+    st.button(
         "Dobierz ustawienie bazowe",
         key="base_fit_button",
         use_container_width=True,
         type="primary",
-    ):
-        try:
-            rec = recommend_and_evaluate(
-                rider,
-                bike,
-                str(st.session_state.style),
-                str(st.session_state.flexibility),
-            )
-            apply_fit_result(
-                rec.settings,
-                rec.notes,
-                "Dobrano ustawienie bazowe. Sprawdź wartości M1–M4 i wprowadzaj zmiany stopniowo.",
-            )
-        except Exception as exc:
-            st.session_state.fit_action_status = f"Nie udało się dobrać ustawienia: {exc}"
-            st.session_state.fit_action_error = True
+        on_click=run_base_fit_action,
+        args=(rider, bike),
+    )
 
-    if st.button(
+    st.button(
         "Optymalizuj aktualne ustawienie",
         key="optimize_fit_button",
         use_container_width=True,
-    ):
-        try:
-            with st.spinner("Analizuję pełny obrót korby…"):
-                result, optimized_analysis = optimize_fit(bike, rider, current_settings())
-            apply_fit_result(
-                result,
-                [f"Optymalizacja zakończona wynikiem {optimized_analysis.score:.1f}/100."],
-                f"Optymalizacja zakończona: {optimized_analysis.score:.1f}/100.",
-            )
-        except Exception as exc:
-            st.session_state.fit_action_status = f"Nie udało się zoptymalizować ustawienia: {exc}"
-            st.session_state.fit_action_error = True
+        on_click=run_optimize_fit_action,
+        args=(rider, bike),
+    )
 
-    # Poniżej są suwaki korzystające już z nowych wartości.
+    # Callback uruchamia się przed ponownym renderowaniem, dlatego suwaki poniżej
+    # otrzymują już nowe wartości i nie dochodzi do modyfikacji aktywnego widżetu.
 
     if st.session_state.fit_action_status:
         if st.session_state.fit_action_error:
@@ -1934,7 +1952,7 @@ with st.sidebar:
     st.slider("Przesunięcie siodła na szynach [mm] (+ przód / − tył)", -60.0, 80.0, key="saddle_fore_aft", step=1.0)
     _shift_value, _shift_direction, _ = saddle_shift_description(float(st.session_state.saddle_fore_aft))
     st.info(f"Ustaw siodło: **{_shift_value} {_shift_direction}** względem pozycji neutralnej na szynach.")
-    st.caption("Długość korby, mostek, jego kąt oraz wysokość i zasięg kierownicy ustawisz wyżej w panelu **🔧 Komponenty łatwe do wymiany**.")
+    st.caption("Długość korby, mostek, jego kąt, **podkładki pod mostkiem** oraz zasięg kierownicy ustawisz wyżej w rozwiniętym panelu **🔧 Komponenty łatwe do wymiany**.")
     st.slider("Kąt stopy [°]", -20.0, 15.0, key="foot_angle", step=1.0)
     st.caption("Sterowanie animacją, kadencją, skalą i oznaczeniami znajduje się pod rysunkiem roweru w zakładce **Symulacja**.")
 
@@ -1947,7 +1965,7 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v4.3</h1>
+  <h1>BikeFit Studio Online v4.4</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -2300,5 +2318,5 @@ with report_tab:
 
 render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online v4.3 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
+<div class="footer-note">BikeFit Studio Online v4.4 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
 """, unsafe_allow_html=True)
