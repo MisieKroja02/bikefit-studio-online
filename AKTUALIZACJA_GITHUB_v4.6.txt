@@ -1,0 +1,18 @@
+BikeFit Studio Online v4.6 — aktualizacja
+
+Najbezpieczniej wgrać całą zawartość tej paczki do repozytorium, zachowując katalogi bikefit, data, assets, tests i .streamlit.
+
+Najważniejsze zmiany:
+- interfejs prowadzony w 3 krokach,
+- tryb Prosty / Zaawansowany,
+- instrukcja pierwszego uruchomienia,
+- uporządkowany panel boczny,
+- komponenty opcjonalne domyślnie zwinięte,
+- czytelna kolejność zakładek,
+- kontrola nietypowych danych wejściowych,
+- bardziej jednoznaczne nazwy przycisków doboru i optymalizacji.
+
+Po wgraniu:
+1. Commit changes.
+2. Streamlit: Manage app -> Reboot app.
+3. Odśwież stronę przez Ctrl+F5.

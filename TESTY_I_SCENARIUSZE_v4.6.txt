@@ -1,0 +1,28 @@
+Zakres testów BikeFit Studio Online v4.6
+
+Automatyczne:
+- 46 testów pytest,
+- kompilacja wszystkich plików Python,
+- 180 kombinacji: 5 wzrostów, 3 style pozycji, 4 masy i 3 typy geometrii,
+- reprezentatywne przypadki optymalizacji dla niskiej, średniej i wysokiej osoby,
+- testy importu geometrii, trwałej bazy, usuwania geometrii, diagnostyki, rozmiaru ramy i licznika.
+
+Przejrzane ścieżki użytkownika:
+1. Pierwsze wejście i podanie pseudonimu.
+2. Wybór istniejącego roweru.
+3. Automatyczny przekrok.
+4. Dobór ustawienia bazowego.
+5. Optymalizacja.
+6. Ręczne korekty siodła.
+7. Zmiana korby, mostka, kąta i podkładek.
+8. Import geometrii z linku.
+9. Ręczne wpisanie i zapis geometrii.
+10. Usuwanie własnej geometrii.
+11. Symulacja i animacja.
+12. Interaktywne pomiary i instrukcje wizualne.
+13. Opony i ciśnienie.
+14. Wykresy kątów.
+15. Raport i kopia danych.
+
+Ograniczenie testu:
+Nie wykonano rzeczywistego zapisu do prywatnego repozytorium GitHub użytkownika, ponieważ wymaga jego tokenu i konfiguracji Secrets.

@@ -55,7 +55,7 @@ COUNTER_NAMESPACE = "misiek-bikefit-studio-online"
 COUNTER_API_BASE = "https://api.counterapi.dev/v1"
 
 st.set_page_config(
-    page_title="BikeFit Studio Online v4.5 — MisieK",
+    page_title="BikeFit Studio Online v4.6 — MisieK",
     page_icon="🚲",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -122,6 +122,13 @@ CSS = """
 .frame-size-reason {color:#a9bdcd;margin:4px 0;line-height:1.4;}
 .frame-size-suggestion {margin-top:10px;padding:10px 12px;border-radius:10px;background:#0b1823;color:#eef7ff;border-left:4px solid currentColor;}
 .geometry-store-warning {padding:10px 12px;border-radius:12px;background:#392b12;border:1px solid #7c6222;color:#ffe7a3;margin:8px 0;line-height:1.4;}
+.workflow-card {padding:14px 16px;border-radius:16px;background:linear-gradient(135deg,#102536,#0d1c28);border:1px solid #36546b;margin:10px 0 14px;}
+.workflow-grid {display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px;}
+.workflow-step {padding:11px 12px;border-radius:12px;background:#0b1925;border:1px solid #2e485e;color:#dceaf5;}
+.workflow-step b {display:block;color:#67e4b5;margin-bottom:4px;}
+.section-kicker {font-size:.76rem;text-transform:uppercase;letter-spacing:.08em;color:#78baff;font-weight:800;margin-top:8px;}
+.sidebar-summary {padding:9px 11px;border-radius:11px;background:#0c1a26;border:1px solid #2c4559;color:#b8cbd9;font-size:.82rem;margin:6px 0 10px;}
+@media (max-width: 900px) {.workflow-grid{grid-template-columns:1fr;}}
 .footer-note {text-align:center;color:#8399ab;font-size:.78rem;margin-top:28px;}
 div[data-baseweb="select"] > div {background:#162838 !important;color:#f5fbff !important;border-color:#3c5b73 !important;}
 div[data-baseweb="select"] input {color:#f5fbff !important;-webkit-text-fill-color:#f5fbff !important;}
@@ -763,6 +770,8 @@ def init_state() -> None:
         "pending_profile_payload": None,
         "geometry_action_status": "",
         "geometry_action_error": False,
+        "interface_mode": "Prosty",
+        "welcome_open": True,
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -1577,7 +1586,7 @@ def report_html(bike: BikeGeometry, rider: Rider, settings: FitSettings) -> str:
     ) or "<li>Ocena powyżej 90/100 — brak ostrzeżeń modelu.</li>"
     return f"""<!doctype html><html lang='pl'><meta charset='utf-8'><title>Raport BikeFit</title>
     <style>body{{font-family:Arial;max-width:900px;margin:30px auto;color:#10202e}}h1{{color:#244c68}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ccd8e0;padding:9px}}.brand{{color:#537089}}</style>
-    <h1>BikeFit Studio Online v4.5</h1><div class='brand'>Autor: MisieK</div>
+    <h1>BikeFit Studio Online v4.6</h1><div class='brand'>Autor: MisieK</div>
     <h2>{html.escape(bike.name)}</h2><p>Rowerzysta: {html.escape(rider.name)}, wzrost {rider.height:.0f} mm, przekrok {rider.inseam:.0f} mm, masa {rider.weight:.1f} kg.</p>
     <p><b>Ocena modelu: {analysis.score:.1f}/100</b></p>
     <table><tr><th>Kod</th><th>Pomiar</th><th>Wartość</th></tr>{rows}</table>
@@ -1603,7 +1612,15 @@ with st.sidebar:
     st.markdown("### BikeFit Studio Online")
     st.caption("Autor: **MisieK**")
     st.success(f"Profil: {st.session_state.user_alias}")
+    st.selectbox(
+        "Tryb interfejsu",
+        ["Prosty", "Zaawansowany"],
+        key="interface_mode",
+        help="Tryb prosty prowadzi krok po kroku. Tryb zaawansowany pokazuje dodatkowe informacje techniczne.",
+    )
     st.markdown("---")
+    st.markdown('<div class="section-kicker">Krok 1 z 3</div>', unsafe_allow_html=True)
+    st.markdown("#### Wybierz rower")
 
     catalog = bike_catalog()
     if st.session_state.shared_store_persistent:
@@ -1673,7 +1690,8 @@ with st.sidebar:
                     st.session_state.geometry_for = ""
                 st.rerun()
 
-    with st.expander("🌐 Import geometrii z linku", expanded=False):
+    st.caption("Nie ma roweru na liście? Rozwiń import lub ręczną edycję.")
+    with st.expander("🌐 Dodaj rower z linku", expanded=False):
         st.caption("Otwórz katalog, wybierz dokładny model, rocznik i rozmiar, a następnie wklej adres strony. Po pobraniu możesz wpisać własną nazwę geometrii przed zapisaniem.")
         external_link_button("Otwórz Bike Insights", "https://bikeinsights.com/search")
         external_link_button("Otwórz Geometry Geeks", "https://geometrygeeks.bike/")
@@ -1776,7 +1794,7 @@ with st.sidebar:
         for import_note in st.session_state.sidebar_import_notes:
             st.caption(f"• {import_note}")
 
-    with st.expander("📐 Ręczna edycja geometrii", expanded=False):
+    with st.expander("📐 Wpisz geometrię ręcznie", expanded=False):
         st.caption("Zmiany działają od razu w symulacji. Po zapisaniu geometria pojawi się we wspólnej liście wyboru dla wszystkich użytkowników.")
         st.text_input("Nazwa geometrii", key="geo_name")
         st.selectbox("Typ roweru", ["Gravel", "Road", "MTB", "Trekking", "City", "TT"], key="geo_type")
@@ -1794,7 +1812,14 @@ with st.sidebar:
             st.session_state.sidebar_import_status = save_message
             st.rerun()
 
-    with st.expander("🔧 Komponenty łatwe do wymiany", expanded=True):
+    st.markdown(
+        f'<div class="sidebar-summary"><b>Aktualne komponenty:</b><br>'
+        f'korba {float(st.session_state.get("component_crank_length", base_bike.crank_length)):.1f} mm • '
+        f'mostek {float(st.session_state.get("component_stem_length", base_bike.stem_length)):.0f} mm • '
+        f'podkładki {float(st.session_state.get("handlebar_stack_delta", 0.0)):+.0f} mm</div>',
+        unsafe_allow_html=True,
+    )
+    with st.expander("🔧 Komponenty łatwe do wymiany (opcjonalnie)", expanded=False):
         st.caption(
             "Te ustawienia dotyczą części, które najczęściej zmienia się bez wymiany ramy. "
             "Wpływają od razu na symulację, kąty i ocenę pozycji, ale nie zmieniają wymiarów samej ramy."
@@ -1892,7 +1917,9 @@ with st.sidebar:
 
     bike = geometry_from_state(base_bike)
 
-    st.markdown("#### Rowerzysta")
+    st.markdown("---")
+    st.markdown('<div class="section-kicker">Krok 2 z 3</div>', unsafe_allow_html=True)
+    st.markdown("#### Dane rowerzysty")
     st.text_input("Nazwa profilu", key="profile_name")
 
     # Opcja jest renderowana przed polem przekroku. Dzięki temu wartość
@@ -1942,13 +1969,19 @@ with st.sidebar:
 
     rider = current_rider()
 
-    if st.button("Zmień użytkownika", key="logout_profile", use_container_width=True):
-        for session_key in list(st.session_state.keys()):
-            del st.session_state[session_key]
-        st.rerun()
+    with st.expander("👤 Profil i zmiana użytkownika", expanded=False):
+        st.caption("Zmiana użytkownika wyczyści bieżące dane z tej karty przeglądarki.")
+        if st.button("Zmień użytkownika", key="logout_profile", use_container_width=True):
+            for session_key in list(st.session_state.keys()):
+                del st.session_state[session_key]
+            st.rerun()
 
+    st.markdown("---")
+    st.markdown('<div class="section-kicker">Krok 3 z 3</div>', unsafe_allow_html=True)
+    st.markdown("#### Dobierz pozycję")
+    st.caption("Najpierw użyj ustawienia bazowego. Optymalizację uruchom dopiero po sprawdzeniu danych i geometrii.")
     st.button(
-        "Dobierz ustawienie bazowe",
+        "1. Dobierz ustawienie bazowe",
         key="base_fit_button",
         use_container_width=True,
         type="primary",
@@ -1957,7 +1990,7 @@ with st.sidebar:
     )
 
     st.button(
-        "Optymalizuj aktualne ustawienie",
+        "2. Dopracuj ustawienie automatycznie",
         key="optimize_fit_button",
         use_container_width=True,
         on_click=run_optimize_fit_action,
@@ -1973,7 +2006,8 @@ with st.sidebar:
         else:
             st.success(st.session_state.fit_action_status)
 
-    st.markdown("#### Regulacja")
+    st.markdown("#### Korekty ręczne")
+    st.caption("Zmiany wprowadzaj po 2–5 mm i obserwuj ocenę oraz komentarze modelu.")
     st.slider("M1 wysokość siodła [mm]", 500.0, 900.0, key="saddle_height", step=1.0)
     st.slider("Przesunięcie siodła na szynach [mm] (+ przód / − tył)", -60.0, 80.0, key="saddle_fore_aft", step=1.0)
     _shift_value, _shift_direction, _ = saddle_shift_description(float(st.session_state.saddle_fore_aft))
@@ -1984,6 +2018,19 @@ with st.sidebar:
 
 settings = current_settings()
 rider = current_rider()
+
+# Natychmiastowa kontrola danych wejściowych — komunikaty zamiast cichego błędnego wyniku.
+input_warnings: list[str] = []
+if rider.inseam >= rider.height * 0.58 or rider.inseam <= rider.height * 0.38:
+    input_warnings.append("Przekrok wygląda nietypowo względem wzrostu. Sprawdź jednostki i pomiar.")
+if rider.weight < 40 or rider.weight > 180:
+    input_warnings.append("Masa jest skrajna dla modelu startowego; ciśnienie i rozkład masy traktuj orientacyjnie.")
+if bike.stack <= 300 or bike.reach <= 250:
+    input_warnings.append("Geometria ma nietypowy stack lub reach. Sprawdź importowane dane.")
+if input_warnings:
+    with st.sidebar:
+        st.warning("Sprawdź dane:\n\n" + "\n\n".join(f"• {item}" for item in input_warnings))
+
 analysis = analyze_cycle(bike, rider, settings, samples=72)
 fit_diagnostics = explain_fit(bike, rider, settings, analysis, threshold=90.0)
 frame_size_assessment = assess_frame_size(bike, rider, settings)
@@ -1991,10 +2038,25 @@ pressure = calculate_tire_pressure(rider, bike, settings)
 
 st.markdown("""
 <div class="hero">
-  <h1>BikeFit Studio Online v4.5</h1>
+  <h1>BikeFit Studio Online v4.6</h1>
   <p>Interaktywny konfigurator pozycji, wymiarów roweru i ciśnienia w oponach — bez instalowania programu.</p>
 </div>
 """, unsafe_allow_html=True)
+
+with st.expander("👋 Pierwsza wizyta? Zacznij tutaj", expanded=bool(st.session_state.get("welcome_open", True))):
+    st.markdown(
+        '<div class="workflow-card"><b>Najprostsza kolejność pracy</b>'
+        '<div class="workflow-grid">'
+        '<div class="workflow-step"><b>1. Wybierz rower</b>Wybierz dokładny model i rozmiar. Gdy go nie ma, użyj importu z linku.</div>'
+        '<div class="workflow-step"><b>2. Wpisz swoje dane</b>Podaj wzrost, przekrok i masę. Przekrok może zostać oszacowany.</div>'
+        '<div class="workflow-step"><b>3. Dobierz i sprawdź</b>Kliknij ustawienie bazowe, potem obejrzyj symulację, pomiary i komentarze.</div>'
+        '</div></div>',
+        unsafe_allow_html=True,
+    )
+    st.info("Najpierw ustaw rower i osobę. Komponenty, opony i zaawansowane suwaki zostaw na później.")
+    if st.button("Rozumiem — zwiń instrukcję", key="close_welcome"):
+        st.session_state.welcome_open = False
+        st.rerun()
 
 m1, m2, m3, m4 = st.columns(4)
 with m1:
@@ -2011,7 +2073,7 @@ st.markdown(render_frame_size_assessment(frame_size_assessment, compact=True), u
 st.caption("Ocena rozmiaru ramy aktualizuje się automatycznie po każdej zmianie wzrostu, przekroku, stylu, geometrii lub ustawień kokpitu — nie trzeba ponownie uruchamiać optymalizacji.")
 
 main_tab, config_tab, tire_tab, geometry_tab, import_tab, measurements_tab, guides_tab, angles_tab, report_tab = st.tabs([
-    "Symulacja", "Wymiary i konfigurator", "Opony i ciśnienie", "Geometria roweru", "Import online", "📏 Pomiary roweru", "🧭 Jak mierzyć", "Wykresy kątów", "Raport",
+    "1. Symulacja", "2. Ustawienie", "5. Opony", "6. Geometria", "7. Baza / import", "3. Pomiary", "4. Jak mierzyć", "8. Wykresy", "9. Raport",
 ])
 
 with main_tab:
@@ -2344,5 +2406,5 @@ with report_tab:
 
 render_visitor_counter()
 st.markdown("""
-<div class="footer-note">BikeFit Studio Online v4.5 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
+<div class="footer-note">BikeFit Studio Online v4.6 • autor: MisieK • narzędzie orientacyjne, nie wyrób medyczny<br><span style="font-size:.72rem;color:#71899c">Licznik wizyt nie zapisuje danych profilu.</span></div>
 """, unsafe_allow_html=True)
